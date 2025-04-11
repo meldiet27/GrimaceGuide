@@ -1,0 +1,18 @@
+# Core GUI framework
+kivy>=2.0.0
+
+# Image processing and visualization
+matplotlib>=3.5.0
+numpy>=1.20.0
+Pillow>=9.0.0
+
+# API requests
+requests>=2.25.0
+
+# Windows-specific dependencies
+kivy_deps.sdl2>=0.3.1
+kivy_deps.glew>=0.3.1
+kivy_deps.angle>=0.3.0
+
+# Additional potentially needed packages
+python-dateutil>=2.8.2
