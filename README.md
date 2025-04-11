@@ -25,9 +25,7 @@ An application for evaluating grimace scores in cats using computer vision and l
     │   │   └── popups.py       # Custom popup dialogs
     │   │
     │   └── resources/          # Application resources
-    │       ├── __init__.py     # Resources package initializer
-    │       ├── images/         # Image resources directory
-    │       └── styles.kv       # Kivy styles
+    │       └── __init__.py     # Resources package initializer
     │
     └── imagesGUI/              # Guide images directory
         ├── GrimaceGuideEarsGUI.png
