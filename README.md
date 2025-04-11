@@ -1,3 +1,7 @@
+# Grimace Guide
+
+An application for evaluating grimace scores in cats using computer vision and landmarks detection.
+
 # Folder Structure
 
     GrimaceGuide/
@@ -32,9 +36,6 @@
         ├── GrimaceGuideMuzzleGUI.png
         └── GrimaceGuideWhiskersGUI.png
     
-# Grimace Score Evaluator
-
-An application for evaluating grimace scores in animals using computer vision and landmarks detection.
 
 ## Features
 
@@ -50,8 +51,6 @@ An application for evaluating grimace scores in animals using computer vision an
 3. Install dependencies:
 
 pip install -r requirements.txt
-
-
 
 ## Usage
 
