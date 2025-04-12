@@ -45,8 +45,18 @@ An application for evaluating grimace scores in cats using computer vision and l
 ## Installation
 
 1. Clone this repository
-2. Create a virtual environment:
-3. Install dependencies:
+
+        gh repo clone ProjectLantier/GrimaceGuide
+   
+3. Create a virtual environment:
+
+        python -m venv venv
+
+4. Activate the virtual environment:
+
+       .\venv\Scripts\activate
+   
+5. Install dependencies:
 
         pip install -r requirements.txt
 
