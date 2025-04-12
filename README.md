@@ -48,13 +48,13 @@ An application for evaluating grimace scores in cats using computer vision and l
 2. Create a virtual environment:
 3. Install dependencies:
 
-pip install -r requirements.txt
+        pip install -r requirements.txt
 
 ## Usage
 
 Run the application:
 
-python main.py
+        python main.py
 
 
 ## Directory Structure
