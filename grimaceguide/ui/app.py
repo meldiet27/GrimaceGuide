@@ -17,7 +17,7 @@ from ..database import DatabaseManager
 from ..api import send_image_for_processing
 from ..models import process_with_model
 from .widgets import BorderedBox, BackgroundLabel, StyledButton, ScoreRowLayout, ImageContainer
-from .popups import FileChooserPopup, MessagePopup
+from .popups import FileChooserPopup, MessagePopup, TutorialPopup
 
 class GrimaceGuideApp(App):
     """Main application class"""
@@ -204,7 +204,15 @@ class GrimaceGuideApp(App):
         Clock.schedule_once(self.update_all_canvases, 0.5)  # Second update to catch any missed updates
         
         return main_layout
-    
+
+    def on_start(self):
+        """Show the tutorial popup when the app starts"""
+        Clock.schedule_once(self.show_tutorial_popup, 0.5)
+
+    def show_tutorial_popup(self, *args):
+        popup = TutorialPopup()
+        popup.open()
+ 
     def update_all_canvases(self, dt):
         """Force update of all canvases after layout is complete"""
         # Update left panel canvases for proper borders and backgrounds

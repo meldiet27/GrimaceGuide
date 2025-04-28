@@ -13,6 +13,7 @@ from kivy.properties import ObjectProperty, StringProperty
 from kivy.metrics import dp
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
+from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 
 from .widgets import StyledButton
 from ..config import COLORS, HELP_IMAGES
@@ -172,3 +173,117 @@ class ScoreHelpButton(StyledButton):
         else:
             # Fallback if image not found - could enhance with a default image
             print(f"Error: Image not found at path {image_path}")
+
+class TutorialPopup(Popup):
+    """A fancier multi-page tutorial popup."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.title = "Welcome to GrimaceGuide!"
+        self.size_hint = (0.85, 0.8)
+        self.auto_dismiss = False
+
+        self.page_index = 0  # Track the current page index
+
+        layout = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
+
+        # Create a ScreenManager to switch between tutorial pages
+        self.screen_manager = ScreenManager(transition=SlideTransition())
+
+        # Define and add each tutorial page
+        self.screen_manager.add_widget(self.create_screen(
+            "Welcome to the meowgical world of feline facial analysis!\n\nPress 'Next' to continue.", 
+            image_path="imagesGUI/tutorial-1.png" 
+        ))
+        self.screen_manager.add_widget(self.create_screen(
+            "Paw-tograph please!\n\nUpload a photo of your feline friend to begin.",
+            image_path="imagesGUI/tutorial-2.png" 
+        ))
+        self.screen_manager.add_widget(self.create_screen(
+            "Results Panel:\n\nSee scores for Ears, Eyes, Muzzle, Whiskers, and Head — all under paw-servation!",
+            image_path="imagesGUI/tutorial-3.png" 
+        ))
+        self.screen_manager.add_widget(self.create_screen(
+            "Prediction Options:\n\nUse API for more accurate results, or Model for faster local prediction.",
+            image_path="imagesGUI/tutorial-4.png" 
+        ))
+        self.screen_manager.add_widget(self.create_screen(
+            "Ready to get started?\n\nLet's paw-sess those scores! 🐾",
+            image_path="imagesGUI/tutorial-5.png" ,
+            final=True  # Mark the last page
+        ))
+
+        # Create navigation buttons (Back and Next)
+        self.button_layout = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        self.back_button = Button(text="Back", disabled=True, size_hint_x=0.4)
+        self.next_button = Button(text="Next", size_hint_x=0.6)
+
+        # Bind button actions
+        self.back_button.bind(on_release=self.go_back)
+        self.next_button.bind(on_release=self.go_next)
+
+        self.button_layout.add_widget(self.back_button)
+        self.button_layout.add_widget(self.next_button)
+
+        # Add everything into the popup layout
+        layout.add_widget(self.screen_manager)
+        layout.add_widget(self.button_layout)
+
+        self.content = layout
+
+    def create_screen(self, text, image_path=None, final=False):
+        """Create an individual tutorial page (screen) with optional image."""
+        # Create a new screen with a unique name
+        screen = Screen(name=f"screen{len(self.screen_manager.screens)}")
+
+        screen_layout = BoxLayout(orientation='vertical', spacing=dp(10))
+
+        # Add an image if provided
+        if image_path:
+            img = Image(source=image_path, size_hint=(1, 0.5), allow_stretch=True, keep_ratio=True)
+            screen_layout.add_widget(img)
+
+        # Add tutorial text
+        lbl = Label(
+            text=text,
+            halign="center",
+            valign="middle",
+            markup=True,
+            text_size=(dp(500), None),
+            size_hint_y=None
+        )
+        lbl.bind(texture_size=lambda instance, value: setattr(lbl, 'height', value[1]))
+        screen_layout.add_widget(lbl)
+
+        # Add the layout to the screen
+        screen.add_widget(screen_layout)
+
+        # Mark if this is the final page
+        screen.final = final
+        return screen
+
+    def go_back(self, instance):
+        """Go to the previous tutorial page."""
+        if self.page_index > 0:
+            self.page_index -= 1
+            self.screen_manager.transition.direction = 'right'
+            self.screen_manager.current = self.screen_manager.screens[self.page_index].name
+        self.update_buttons()
+
+    def go_next(self, instance):
+        """Go to the next tutorial page or dismiss if on the last page."""
+        if self.page_index < len(self.screen_manager.screens) - 1:
+            self.page_index += 1
+            self.screen_manager.transition.direction = 'left'
+            self.screen_manager.current = self.screen_manager.screens[self.page_index].name
+        else:
+            self.dismiss()
+        self.update_buttons()
+
+    def update_buttons(self):
+        """Enable/disable navigation buttons based on the current page."""
+        self.back_button.disabled = self.page_index == 0
+        if self.page_index == len(self.screen_manager.screens) - 1:
+            self.next_button.text = "Finish"
+        else:
+            self.next_button.text = "Next"
+
