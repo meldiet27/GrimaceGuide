@@ -286,4 +286,38 @@ class TutorialPopup(Popup):
             self.next_button.text = "Finish"
         else:
             self.next_button.text = "Next"
+class StartupChoicePopup(Popup):
+    """Popup asking if the user wants to upload an image or use camera"""
+    def __init__(self, upload_callback, camera_callback, **kwargs):
+        super().__init__(**kwargs)
+        self.title = "Get Started"
+        self.size_hint = (0.7, 0.4)
+        self.auto_dismiss = False
 
+        layout = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(20))
+
+        label = Label(
+            text="Would you like to upload an image or take a photo with the camera?",
+            halign='center',
+            valign='middle'
+        )
+
+        button_layout = BoxLayout(spacing=dp(10), size_hint_y=None, height=dp(50))
+        upload_btn = StyledButton(text="Upload Image", bg_color=COLORS['primary'])
+        camera_btn = StyledButton(text="Use Camera", bg_color=COLORS['success'])
+
+        upload_btn.bind(on_release=lambda x: self._choose(upload_callback))
+        camera_btn.bind(on_release=lambda x: self._choose(camera_callback))
+
+        button_layout.add_widget(upload_btn)
+        button_layout.add_widget(camera_btn)
+
+        layout.add_widget(label)
+        layout.add_widget(button_layout)
+
+        self.content = layout
+
+    def _choose(self, callback):
+        self.dismiss()
+        if callback:
+            callback(None)
