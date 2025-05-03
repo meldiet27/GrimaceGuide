@@ -217,11 +217,12 @@ class GrimaceGuideApp(App):
         popup.open()
 
     def open_camera_capture(self, instance):
-        """Opens camera"""
         from grimaceguide.ui.camera_cv import capture_image_with_overlay
         image_path = capture_image_with_overlay()
-        if image_path:
-            self.load_image(image_path)
+        if not image_path:
+            print("Camera capture was canceled or failed.")
+            return
+        self.load_image(image_path) #Loaded images must have path
  
     def update_all_canvases(self, dt):
         """Force update of all canvases after layout is complete"""
