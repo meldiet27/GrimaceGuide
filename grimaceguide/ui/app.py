@@ -16,7 +16,7 @@ from ..config import COLORS, WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, SCORE_CA
 from ..database import DatabaseManager
 from ..api import send_image_for_processing
 from .widgets import BorderedBox, BackgroundLabel, StyledButton, ScoreRowLayout, ImageContainer
-from .popups import FileChooserPopup, MessagePopup, TutorialPopup
+from .popups import FileChooserPopup, MessagePopup, TutorialPopup, StartupChoicePopup
 
 class GrimaceGuideApp(App):
     """Main application class"""
@@ -198,12 +198,30 @@ class GrimaceGuideApp(App):
         return main_layout
 
     def on_start(self):
-        """Show the tutorial popup when the app starts"""
-        Clock.schedule_once(self.show_tutorial_popup, 0.5)
+        """Runs tutorial on startup"""
+        Clock.schedule_once(self.show_tutorial_then_startup, 0.5)
 
-    def show_tutorial_popup(self, *args):
-        popup = TutorialPopup()
+    def show_tutorial_then_startup(self, dt):
+        """Tutorial popup"""
+        tutorial = TutorialPopup()
+        tutorial.bind(on_dismiss=lambda *args: self.show_startup_choice())
+        tutorial.open()
+
+    def show_startup_choice(self):
+        """Popup for user choice of importing or camera image"""
+        from .popups import StartupChoicePopup
+        popup = StartupChoicePopup(
+            upload_callback=self.show_file_chooser,
+            camera_callback=self.open_camera_capture
+        )
         popup.open()
+
+    def open_camera_capture(self, instance):
+        """Opens camera"""
+        from grimaceguide.ui.camera_cv import capture_image_with_overlay
+        image_path = capture_image_with_overlay()
+        if image_path:
+            self.load_image(image_path)
  
     def update_all_canvases(self, dt):
         """Force update of all canvases after layout is complete"""
