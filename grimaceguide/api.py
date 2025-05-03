@@ -15,6 +15,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from .config import API_URL
+from .fgsScoreCalc import calculate_scores_from_landmarks # Import score calculation from models
 
 def convert_image_to_base64(image_path):
     """Convert an image file to base64 encoding"""
@@ -31,7 +32,7 @@ def create_json_payload(image_path, image_base64_string):
     return json.dumps(payload)
 
 def send_image_for_processing(image_path, url=API_URL):
-    """Send image to API for processing and return results"""
+    """Send image to API for processing, calculate scores, and return results"""
     try:
         image_base64_string = convert_image_to_base64(image_path)
         request = create_json_payload(image_path, image_base64_string)
@@ -41,39 +42,53 @@ def send_image_for_processing(image_path, url=API_URL):
         response = requests.post(url, data=request, headers=headers)
 
         if response.status_code == 200:
-            print("Image processed successfully!")
-            result = response.json()
+            print("Image processed successfully by API!")
+            api_response_data = response.json()
             
-            # Process image with landmarks
+            # Process image with landmarks for visualization
+            processed_img_path = None
             try:
                 original_img = PILImage.open(image_path)
-                processed_img_path = process_image_with_landmarks(original_img, result, image_path)
-                
-                # Calculate scores based on landmarks
-                scores = calculate_scores_from_landmarks(result)
-                
-                return {
-                    'success': True,
-                    'processed_image': processed_img_path,
-                    'api_response': result,
-                    'scores': scores
-                }
+                processed_img_path = process_image_with_landmarks(original_img, api_response_data, image_path)
             except Exception as e:
-                print(f"Error processing landmarks: {e}")
-                return {
-                    'success': True,
-                    'api_response': result,
-                    'error_processing': str(e)
-                }
+                print(f"Error visualizing landmarks: {e}")
+                # Continue without visualization if it fails
+
+            # Calculate scores based on landmarks
+            scores = {}
+            labeled_landmarks = {}
+            try:
+                labeled_landmarks = get_labeled_landmarks(api_response_data) # Get labeled dict
+                if labeled_landmarks: # Check if landmarks were found and labeled
+                     # Call the imported function
+                     scores = calculate_scores_from_landmarks(labeled_landmarks)
+                else:
+                     print("No landmarks found or labeled, cannot calculate scores.")
+                     # Return default scores or handle error appropriately
+                     scores = {'ears': 0, 'eyes': 0, 'muzzle': 0, 'whiskers': 0, 'head': 0, 'total_score': 0}
+
+            except Exception as e:
+                print(f"Error calculating scores from landmarks: {e}")
+                # Fallback or error handling for score calculation
+                scores = {'ears': -1, 'eyes': -1, 'muzzle': -1, 'whiskers': -1, 'head': -1, 'total_score': -1} # Indicate error
+
+            return {
+                'success': True,
+                'processed_image': processed_img_path, # Path to visualized image (or None)
+                'api_response': api_response_data, # Raw API response for storage
+                'scores': scores, # Calculated scores
+                'labeled_landmarks': labeled_landmarks # Labeled landmarks for potential db storage
+            }
+            
         else:
-            print(f"Failed to process image: {response.status_code}")
+            print(f"Failed to process image via API: {response.status_code}")
             print(response.text)
             return {
                 'success': False,
                 'error': f"API Error: {response.status_code}"
             }
     except Exception as e:
-        print(f"Exception during API call: {e}")
+        print(f"Exception during API call or processing: {e}")
         return {
             'success': False,
             'error': f"Exception: {str(e)}"
@@ -121,21 +136,65 @@ def process_image_with_landmarks(img, landmarks_result, original_path):
     
     return processed_path
 
-def calculate_scores_from_landmarks(landmarks_result):
-    """Calculate grimace scores based on landmarks"""
-    # This is a dummy implementation - in a real app, you'd use actual logic
-    # based on the landmarks to calculate the scores
-    import random
-    scores = {
-        'ears': random.randint(0, 2),
-        'eyes': random.randint(0, 2),
-        'muzzle': random.randint(0, 2),
-        'whiskers': random.randint(0, 2),
-        'head': random.randint(0, 2)
-    }
-    
-    # Calculate total score
-    total_score = sum(scores.values())
-    scores['total_score'] = total_score
-    
-    return scores
+def get_labeled_landmarks(landmarks_result):
+    """Convert API landmark result list into a dictionary keyed by labels based on the new structure."""
+    labeled_landmarks = {}
+    # Define the NEW mapping based on user description (48 points)
+    # IMPORTANT: Assumes the API returns landmarks in this exact order.
+    landmark_labels = (
+        # Left Ear (5 points)
+        [f'left_ear_{i+1}' for i in range(5)] +
+        # Right Ear (5 points)
+        [f'right_ear_{i+1}' for i in range(5)] +
+        # Right Eye (4 points)
+        [f'right_eye_{i+1}' for i in range(4)] +
+        # Right Eye Pupil (4 points)
+        [f'right_pupil_{i+1}' for i in range(4)] +
+        # Left Eye (4 points)
+        [f'left_eye_{i+1}' for i in range(4)] +
+        # Left Eye Pupil (4 points)
+        [f'left_pupil_{i+1}' for i in range(4)] +
+        # Nose (5 points)
+        [f'nose_{i+1}' for i in range(5)] +
+        # Mouth (6 points)
+        [f'mouth_{i+1}' for i in range(6)] +
+        # Left Whiskers (5 points)
+        [f'left_whisker_{i+1}' for i in range(5)] +
+        # Right Whiskers (5 points)
+        [f'right_whisker_{i+1}' for i in range(5)] +
+        # Chin (1 point)
+        ['chin_point']
+    )
+
+    if len(landmark_labels) != 48:
+        print(f"ERROR: Landmark label definition has {len(landmark_labels)} labels, expected 48.")
+        return {} # Prevent further errors
+
+    if not landmarks_result:
+        print("Warning: Received empty landmarks result from API.")
+        return {}
+        
+    # Process landmarks for the first detected animal only
+    first_animal_data = landmarks_result[0] 
+    animal_key = list(first_animal_data.keys())[0] 
+    landmarks = first_animal_data[animal_key].get('landmarks', [])
+
+    if not landmarks:
+        print(f"Warning: No landmarks found for animal '{animal_key}'.")
+        return {}
+        
+    if len(landmarks) != 48:
+        print(f"Warning: Received {len(landmarks)} landmarks, but expected 48. Labeling may be incorrect.")
+        # Decide how to handle: truncate, error out, or pad?
+        # For now, we'll try to label what we have.
+
+    for i, landmark in enumerate(landmarks):
+        if i < len(landmark_labels): # Check against the defined labels list length
+            label = landmark_labels[i]
+            labeled_landmarks[label] = {'x': landmark.get('x'), 'y': landmark.get('y')}
+        else:
+            # This case means API returned MORE than 48 points
+            print(f"Warning: Extra landmark at index {i} beyond the expected 48.")
+            labeled_landmarks[f'extra_point_{i}'] = {'x': landmark.get('x'), 'y': landmark.get('y')}
+            
+    return labeled_landmarks

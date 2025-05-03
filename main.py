@@ -1,28 +1,28 @@
 """
-GrimaceGuide - Main entry point for the application
+GrimaceGuide - Main entry point for the application.
+Initializes the environment and launches the Kivy application.
 """
 
 import os
 import sys
 from pathlib import Path
 
-# Add the parent directory to sys.path to allow imports from grimaceguide package
-# This ensures the application can find all modules regardless of how it's launched
+# Add the parent directory to sys.path to allow imports from the 'grimaceguide' package.
+# This ensures the application can find its modules regardless of the launch directory.
 parent_dir = Path(__file__).parent
 sys.path.append(str(parent_dir))
 
-# Set environment variable to use non-interactive matplotlib backend
-# This prevents matplotlib from trying to use GUI backends that might conflict with Kivy
-# Agg is a good choice as it's reliable across platforms and doesn't require a display
+# Set the Matplotlib backend to 'Agg' before importing Kivy or Matplotlib.
+# 'Agg' is a non-interactive backend that renders figures to files,
+# preventing potential conflicts with Kivy's graphical backend.
 os.environ['MPLBACKEND'] = 'Agg'
 
-# Import the main application class
-# The app is implemented as a Kivy App subclass in the grimaceguide package
+# Import the main application class after setting the backend.
 from grimaceguide.ui.app import GrimaceGuideApp
 
+# Standard Python entry point check.
 if __name__ == "__main__":
-    # Initialize and run the application
-    # This is the standard entry point pattern for Kivy applications
-    # The run() method will handle the main event loop and UI rendering
+    # Create an instance of the main application class.
     app = GrimaceGuideApp()
+    # Start the Kivy application event loop. This will build the UI and handle user interactions.
     app.run()

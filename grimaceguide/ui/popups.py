@@ -203,7 +203,7 @@ class TutorialPopup(Popup):
             image_path="imagesGUI/tutorial-3.png" 
         ))
         self.screen_manager.add_widget(self.create_screen(
-            "Prediction Options:\n\nUse API for more accurate results, or Model for faster local prediction.",
+            "Prediction:\n\nUse the Predict FGS Score button for accurate FGS score prediction based on facial landmarks.", # Updated text
             image_path="imagesGUI/tutorial-4.png" 
         ))
         self.screen_manager.add_widget(self.create_screen(

@@ -15,7 +15,7 @@ An application for evaluating grimace scores in cats using computer vision and l
     │   ├── config.py           # Configuration settings
     │   ├── database.py         # Database management
     │   ├── api.py              # API integration
-    │   ├── models.py           # Local model integration
+    │   ├── fgsScoreCalc.py     # FGS Score Calculation
     │   ├── utils.py            # Utility functions
     │   │
     │   ├── ui/                 # UI components
@@ -28,11 +28,6 @@ An application for evaluating grimace scores in cats using computer vision and l
     │       └── __init__.py     # Resources package initializer
     │
     └── imagesGUI/              # Guide images directory
-        ├── GrimaceGuideEarsGUI.png
-        ├── GrimaceGuideEyesGUI.png
-        ├── GrimaceGuideHeadGUI.png
-        ├── GrimaceGuideMuzzleGUI.png
-        └── GrimaceGuideWhiskersGUI.png
     
 
 ## Features

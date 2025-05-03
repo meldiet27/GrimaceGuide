@@ -15,7 +15,6 @@ from kivy.clock import Clock
 from ..config import COLORS, WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, SCORE_CATEGORIES
 from ..database import DatabaseManager
 from ..api import send_image_for_processing
-from ..models import process_with_model
 from .widgets import BorderedBox, BackgroundLabel, StyledButton, ScoreRowLayout, ImageContainer
 from .popups import FileChooserPopup, MessagePopup, TutorialPopup
 
@@ -94,26 +93,19 @@ class GrimaceGuideApp(App):
         )
         self.upload_another_button.bind(on_release=self.show_file_chooser)
         
-        # Two processing options: API or local model
+        # Only one processing option: API
         self.api_button = StyledButton(
-            text='Use API to Predict', 
+            text='Predict FGS Score', 
             disabled=True,  # Disabled until image is loaded
             bg_color=COLORS['success']
-        )
-        self.model_button = StyledButton(
-            text='Use Model to Predict', 
-            disabled=True,  # Disabled until image is loaded
-            bg_color=COLORS['model']
         )
         
         # Connect buttons to their handler functions
         self.api_button.bind(on_release=self.process_with_api)
-        self.model_button.bind(on_release=self.process_with_model)
         
-        # Add all three buttons to the layout with equal spacing
+        # Add buttons to the layout
         control_buttons.add_widget(self.upload_another_button)
         control_buttons.add_widget(self.api_button)
-        control_buttons.add_widget(self.model_button)
         
         # Assemble left panel components in order (top to bottom)
         self.left_panel.add_widget(self.filename_label)
@@ -262,7 +254,6 @@ class GrimaceGuideApp(App):
             
             # Enable all action buttons now that an image is loaded
             self.api_button.disabled = False
-            self.model_button.disabled = False
             self.upload_another_button.disabled = False
             
         except Exception as e:
@@ -322,11 +313,15 @@ class GrimaceGuideApp(App):
                 self.image_container._update_rect(None, None)
             
             # Store landmark data in database if available
+            # The API result now contains 'labeled_landmarks' which might be more suitable
+            # for direct use or further processing, but we still store the raw response.
             if 'api_response' in result:
-                self.db_manager.store_landmarks(self.current_image_id, result['api_response'])
+                # Pass the raw api_response which contains the list of landmark dicts
+                self.db_manager.store_landmarks(self.current_image_id, result['api_response']) 
             
             # Update UI with score results and store in database
             if 'scores' in result:
+                # Store the calculated scores (which might be -1 if calculation failed)
                 self.db_manager.store_scores(self.current_image_id, result['scores'], "API")
                 self.update_scores(result['scores'])
             
@@ -336,44 +331,6 @@ class GrimaceGuideApp(App):
             popup = MessagePopup(
                 title="Processing Error",
                 message=f"Error during processing: {str(e)}"
-            )
-            popup.open()
-    
-    def process_with_model(self, instance):
-        """Process the current image using the local model"""
-        if not self.current_image_path or not self.current_image_id:
-            return
-        
-        try:
-            # Use our local model to process the image
-            # This is faster but may be less accurate than API
-            result = process_with_model(self.current_image_path)
-            
-            if result['success']:
-                # Store results in database
-                self.db_manager.store_scores(self.current_image_id, result['scores'], "Model")
-                
-                # Update UI with model results
-                self.update_scores(result['scores'])
-                
-                # Confirm success to user
-                popup = MessagePopup(
-                    title="Model Processing",
-                    message="Image processed successfully with local model."
-                )
-                popup.open()
-            else:
-                popup = MessagePopup(
-                    title="Model Error",
-                    message=f"Error processing with model: {result.get('error', 'Unknown error')}"
-                )
-                popup.open()
-            
-        except Exception as e:
-            print(f"Error in model processing: {e}")
-            popup = MessagePopup(
-                title="Model Error",
-                message=f"Error processing with model: {str(e)}"
             )
             popup.open()
     
