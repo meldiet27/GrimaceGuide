@@ -135,22 +135,25 @@ class ImageContainer(BoxLayout):
         super(ImageContainer, self).__init__(orientation='vertical', **kwargs)
         # Update image layout when container size changes
         self.bind(size=self._update_rect, pos=self._update_rect)
-    
+
+    # Prevents calculations from being made when the container hasn't been established yet
+    # Height=0 or Width=0
     def _update_rect(self, instance, value):
-        # Ensure image exists and has texture loaded
-        if hasattr(self, 'image') and self.image:
-            if self.image.texture:
-                # Calculate aspect ratios to determine sizing strategy
-                image_ratio = self.image.texture.width / self.image.texture.height
-                container_ratio = self.width / self.height
-                
-                # Different strategies based on whether image or container is wider
-                if image_ratio > container_ratio:  # Image is wider than container
-                    # Fit to width
-                    self.image.height = self.width / image_ratio
-                    self.image.width = self.width
-                    # Center vertically
-                    self.image.center_y = self.center_y
+    if hasattr(self, 'image') and self.image and self.height != 0 and self.width != 0:
+    #Avoids division by 0
+        if self.image.texture:
+            image_ratio = self.image.texture.width / self.image.texture.height
+            container_ratio = self.width / self.height
+
+            if image_ratio > container_ratio:
+                self.image.height = self.width / image_ratio
+                self.image.width = self.width
+                self.image.center_y = self.center_y
+            else:
+                self.image.width = self.height * image_ratio
+                self.image.height = self.height
+                self.image.center_x = self.center_x
+
                 else:  # Image is taller than container
                     # Set width proportionally based on height constraint
                     self.image.width = self.height * image_ratio
