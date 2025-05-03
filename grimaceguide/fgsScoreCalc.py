@@ -35,8 +35,7 @@ def calculate_vertical_angle(p1, p2):
 
 def calculate_scores_from_landmarks(landmarks):
     """Calculate FGS scores based on labeled landmarks and FGS guidelines."""
-    from grimaceguide.ui.camera_cv import ensure_dict
-    labeled_landmarks = ensure_dict(labeled_landmarks) #ensures data is in dictionary
+    
     print("\n--- Calculating Scores (Using FGS Guidelines) ---")
     print(f"Received landmarks: {list(landmarks.keys())}")
     scores = {'ears': 0, 'eyes': 0, 'muzzle': 0, 'whiskers': 0, 'head': 0}
