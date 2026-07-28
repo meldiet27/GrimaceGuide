@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from grimaceguide.core.exceptions import ImageLoadError
+from grimaceguide.core.models import LandmarkSet
 
 ImageInput = Union[str, Path, bytes, bytearray, np.ndarray]
 
@@ -54,3 +55,18 @@ def encode_jpeg(image: np.ndarray, quality: int = 90) -> bytes:
     if not ok:
         raise ImageLoadError("Failed to encode image as JPEG.")
     return buf.tobytes()
+
+
+def draw_landmarks_overlay(
+    image: np.ndarray,
+    landmarks: LandmarkSet,
+    *,
+    radius: int = 3,
+    color: tuple[int, int, int] = (0, 255, 0),
+    thickness: int = -1,
+) -> np.ndarray:
+    """Return a copy of `image` with a filled circle drawn at every landmark point."""
+    overlay = image.copy()
+    for point in landmarks.points:
+        cv2.circle(overlay, (int(point.x), int(point.y)), radius, color, thickness)
+    return overlay

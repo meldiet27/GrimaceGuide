@@ -88,3 +88,4 @@ class AnalysisOutcome:
     result: GrimaceResult
     raw_api_response: Any = None
     persisted_id: Optional[int] = None
+    processed_path: Optional[str] = None

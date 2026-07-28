@@ -10,6 +10,7 @@ from pathlib import Path
 
 from grimaceguide.core.api_client import LandmarkAPIClient
 from grimaceguide.infrastructure.repository import SQLiteResultRepository
+from grimaceguide.infrastructure.storage import LocalBlobStorage
 from grimaceguide.services.analysis_service import AnalysisService
 
 # Import the existing app config for the API URL so we don't have two sources of truth.
@@ -22,11 +23,13 @@ except Exception:
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Use a SEPARATE db from grimace_scores.db so the Kivy app is not affected.
 DEFAULT_ANALYSES_DB = BASE_DIR / "analyses.db"
+DEFAULT_PROCESSED_DIR = BASE_DIR / "processed"
 
 
 def build_service(
     api_url: str | None = None,
     db_path: str | Path | None = None,
+    processed_dir: str | Path | None = None,
 ) -> AnalysisService:
     """Wire together an AnalysisService with sensible defaults."""
     resolved_url = api_url or os.getenv("GG_API_URL", _DEFAULT_API_URL)
@@ -35,8 +38,12 @@ def build_service(
             "No API URL configured. Set GG_API_URL or pass api_url= explicitly."
         )
     resolved_db = Path(db_path or os.getenv("GG_ANALYSES_DB", str(DEFAULT_ANALYSES_DB)))
+    resolved_processed_dir = Path(
+        processed_dir or os.getenv("GG_PROCESSED_DIR", str(DEFAULT_PROCESSED_DIR))
+    )
 
     return AnalysisService(
         api_client=LandmarkAPIClient(url=resolved_url),
         repository=SQLiteResultRepository(db_path=resolved_db),
+        image_storage=LocalBlobStorage(root=resolved_processed_dir),
     )
