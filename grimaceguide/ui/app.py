@@ -13,8 +13,8 @@ from kivy.clock import Clock
 
 # Import app configuration and components from local modules
 from ..config import COLORS, WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, SCORE_CATEGORIES
-from ..database import DatabaseManager
-from ..api import send_image_for_processing
+from ..container import build_service
+from ..core.exceptions import GrimaceGuideError, ImageLoadError, LandmarkAPIError, ScoringError
 from .widgets import BorderedBox, BackgroundLabel, StyledButton, ScoreRowLayout, ImageContainer
 from .popups import FileChooserPopup, MessagePopup, TutorialPopup, StartupChoicePopup
 
@@ -27,8 +27,8 @@ class GrimaceGuideApp(App):
         Window.size = (WINDOW_WIDTH, WINDOW_HEIGHT)
         Window.clearcolor = COLORS['light_gray']  # Set background color for the window
         
-        # Initialize database to store images, scores and processing results
-        self.db_manager = DatabaseManager()
+        # Wire up the analysis pipeline (landmark API + scoring + persistence)
+        self.service = build_service()
         
         # Create the main layout - horizontal split for image panel and results panel
         main_layout = BoxLayout(orientation='horizontal', padding=dp(10), spacing=dp(10))
@@ -188,7 +188,7 @@ class GrimaceGuideApp(App):
         
         # Initialize tracking variables for current image
         self.current_image_path = None
-        self.current_image_id = None
+        self.current_outcome = None
         
         # Schedule canvas updates after layout is complete
         # This ensures proper rendering of all custom widgets
@@ -249,32 +249,25 @@ class GrimaceGuideApp(App):
         try:
             # Update the image path for processing
             self.current_image_path = file_path
-            
+            self.current_outcome = None
+
             # Extract and display filename
             filename = os.path.basename(file_path)
             self.filename_label.text = filename
-            
+
             # Update the image widget with selected file
             self.image_display.source = file_path
             self.image_display.reload()
             self.image_display.opacity = 1  # Show the image
             self.upload_button.opacity = 0  # Hide the upload button
-            
+
             # Recalculate image sizing and position
             self.image_container._update_rect(None, None)
-            
-            # Store the image in the database for tracking
-            self.current_image_id = self.db_manager.store_image(filename, file_path)
-            
-            if self.current_image_id:
-                print(f"Image stored in database with ID: {self.current_image_id}")
-            else:
-                print("Failed to store image in database")
-            
+
             # Enable all action buttons now that an image is loaded
             self.api_button.disabled = False
             self.upload_another_button.disabled = False
-            
+
         except Exception as e:
             print(f"Error loading image: {e}")
             # Show error in popup for user feedback
@@ -286,9 +279,9 @@ class GrimaceGuideApp(App):
     
     def process_with_api(self, instance):
         """Process the current image using the API"""
-        if not self.current_image_path or not self.current_image_id:
+        if not self.current_image_path:
             return
-            
+
         # Show loading message during API processing
         # API calls may take time, so inform the user
         popup = MessagePopup(
@@ -296,62 +289,44 @@ class GrimaceGuideApp(App):
             message="Processing image with API...\nThis may take a moment."
         )
         popup.open()
-        
+
         # Use Clock to avoid freezing UI during processing
         Clock.schedule_once(lambda dt: self._do_api_processing(popup), 0.1)
-    
+
     def _do_api_processing(self, loading_popup):
         """Handle API processing in a separate callback to avoid blocking UI"""
         try:
-            # Call the API processing function from our api module
-            result = send_image_for_processing(self.current_image_path)
-            
-            # Close loading popup when processing is done
-            loading_popup.dismiss()
-            
-            # Handle API errors
-            if not result['success']:
-                popup = MessagePopup(
-                    title="API Error",
-                    message=f"Error processing image: {result.get('error', 'Unknown error')}"
-                )
-                popup.open()
-                return
-            
-            # If API returned a processed image, display it
-            if 'processed_image' in result:
-                processed_path = result['processed_image']
-                
-                # Update database with processed image location
-                self.db_manager.update_processed_image(self.current_image_id, processed_path)
-                
-                # Display the processed image with landmarks/markers
-                self.image_display.source = processed_path
+            outcome = self.service.analyze(self.current_image_path)
+        except ImageLoadError as e:
+            self._show_processing_error("Error", f"Could not load image: {e}")
+        except LandmarkAPIError as e:
+            self._show_processing_error("API Error", f"Error processing image: {e}")
+        except ScoringError as e:
+            self._show_processing_error("Processing Error", f"Error scoring image: {e}")
+        except GrimaceGuideError as e:
+            self._show_processing_error("Processing Error", str(e))
+        except Exception as e:
+            print(f"Error in API processing: {e}")
+            self._show_processing_error("Processing Error", f"Error during processing: {str(e)}")
+        else:
+            self.current_outcome = outcome
+
+            # If a landmark-overlay image was rendered, display it
+            if outcome.processed_path:
+                self.image_display.source = outcome.processed_path
                 self.image_display.reload()
                 # Ensure image is sized correctly
                 self.image_container._update_rect(None, None)
-            
-            # Store landmark data in database if available
-            # The API result now contains 'labeled_landmarks' which might be more suitable
-            # for direct use or further processing, but we still store the raw response.
-            if 'api_response' in result:
-                # Pass the raw api_response which contains the list of landmark dicts
-                self.db_manager.store_landmarks(self.current_image_id, result['api_response']) 
-            
-            # Update UI with score results and store in database
-            if 'scores' in result:
-                # Store the calculated scores (which might be -1 if calculation failed)
-                self.db_manager.store_scores(self.current_image_id, result['scores'], "API")
-                self.update_scores(result['scores'])
-            
-        except Exception as e:
-            print(f"Error in API processing: {e}")
-            # Show error in popup for user feedback
-            popup = MessagePopup(
-                title="Processing Error",
-                message=f"Error during processing: {str(e)}"
-            )
-            popup.open()
+
+            # Update UI with score results (already persisted by the service)
+            self.update_scores(outcome.result.breakdown.as_dict())
+        finally:
+            loading_popup.dismiss()
+
+    def _show_processing_error(self, title, message):
+        """Show an error popup for a failed analysis"""
+        popup = MessagePopup(title=title, message=message)
+        popup.open()
     
     def update_scores(self, scores):
         """Update the UI with new scores"""
@@ -367,9 +342,3 @@ class GrimaceGuideApp(App):
             # Calculate total if not provided by summing all categories
             total = sum(scores.get(cat, 0) for cat in SCORE_CATEGORIES)
             self.total_score_value.text = str(total)
-    
-    def on_stop(self):
-        """Close database connection when app closes"""
-        # Clean up resources when application exits
-        if hasattr(self, 'db_manager'):
-            self.db_manager.close()

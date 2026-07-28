@@ -2,7 +2,6 @@ import cv2
 import os
 from ..utils import generate_timestamp
 from ..config import BASE_DIR
-from grimaceguide.database import DatabaseManager
 
 def apply_overlay(frame, overlay):
     """
@@ -20,18 +19,6 @@ def apply_overlay(frame, overlay):
         overlay_resized = cv2.resize(overlay, (frame.shape[1], frame.shape[0]))
         frame = cv2.addWeighted(frame, 0.5, overlay_resized, 0.5, 0)
     return frame
-
-def ensure_dict(data):
-    """
-    Converts JSON str data to dictionary if not
-    """
-    if isinstance(data, str):
-        try:
-            return json.loads(data)
-        except json.JSONDecodeError:
-            print("Failed to decode JSON string to dict.")
-            return {}
-    return data
 
 def capture_image_with_overlay():
     """Opens Webcam with cat outline overlay"""
@@ -67,13 +54,6 @@ def capture_image_with_overlay():
             saved_path = os.path.join(BASE_DIR, f"camera_capture_{timestamp}.jpg") #Saves image with timestamp
             cv2.imwrite(saved_path, frame)
             print(f"Image saved to {saved_path}")
-
-            #Save image to database
-            from grimaceguide.database import DatabaseManager
-            db = DatabaseManager()
-            filename = os.path.basename(saved_path)
-            image_id = db.store_image(filename, saved_path)
-            print(f"Image stored in DB with ID: {image_id}")
             break
 
         elif key == 27:  # ESC key to exit
