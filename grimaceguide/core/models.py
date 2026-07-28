@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import IntEnum
-from typing import Optional
+from typing import Any, Optional
 
 
 class ActionUnitScore(IntEnum):
@@ -39,11 +39,11 @@ class ActionUnitBreakdown:
     @property
     def total(self) -> int:
         return (
-                int(self.ears)
-                + int(self.eyes)
-                + int(self.muzzle)
-                + int(self.whiskers)
-                + int(self.head)
+            int(self.ears)
+            + int(self.eyes)
+            + int(self.muzzle)
+            + int(self.whiskers)
+            + int(self.head)
         )
 
     @property
@@ -70,9 +70,9 @@ class GrimaceResult:
 
     @staticmethod
     def from_breakdown(
-            breakdown: ActionUnitBreakdown,
-            landmarks: Optional[LandmarkSet] = None,
-            processing_ms: float = 0.0,
+        breakdown: ActionUnitBreakdown,
+        landmarks: Optional[LandmarkSet] = None,
+        processing_ms: float = 0.0,
     ) -> "GrimaceResult":
         return GrimaceResult(
             breakdown=breakdown,
@@ -80,3 +80,11 @@ class GrimaceResult:
             landmarks=landmarks,
             processing_ms=processing_ms,
         )
+
+
+@dataclass(frozen=True)
+class AnalysisOutcome:
+    """The full result of running the analysis pipeline on one image."""
+    result: GrimaceResult
+    raw_api_response: Any = None
+    persisted_id: Optional[int] = None

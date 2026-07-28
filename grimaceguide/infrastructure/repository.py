@@ -5,7 +5,7 @@ import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Optional, Protocol
 
 from grimaceguide.core.models import (
     ActionUnitBreakdown,
@@ -16,7 +16,6 @@ from grimaceguide.core.models import (
 
 class ResultRepository(Protocol):
     def save(self, result: GrimaceResult) -> int: ...
-
     def list_recent(self, limit: int = 20) -> list[GrimaceResult]: ...
 
 
@@ -36,55 +35,49 @@ class SQLiteResultRepository:
         with self._connect() as conn:
             conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS analyses
-                (
-                    id
-                    INTEGER
-                    PRIMARY
-                    KEY
-                    AUTOINCREMENT,
-                    total
-                    INTEGER
-                    NOT
-                    NULL,
-                    normalized
-                    REAL
-                    NOT
-                    NULL,
-                    pain_likely
-                    INTEGER
-                    NOT
-                    NULL,
-                    breakdown_json
-                    TEXT
-                    NOT
-                    NULL,
-                    processing_ms
-                    REAL
-                    NOT
-                    NULL,
-                    created_at
-                    TEXT
-                    NOT
-                    NULL
+                CREATE TABLE IF NOT EXISTS analyses (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    filename       TEXT,
+                    original_path  TEXT,
+                    processed_path TEXT,
+                    total          INTEGER NOT NULL,
+                    normalized     REAL NOT NULL,
+                    pain_likely    INTEGER NOT NULL,
+                    breakdown_json TEXT NOT NULL,
+                    landmarks_json TEXT,
+                    processing_ms  REAL NOT NULL,
+                    created_at     TEXT NOT NULL
                 )
                 """
             )
 
-    def save(self, result: GrimaceResult) -> int:
+    def save(
+        self,
+        result: GrimaceResult,
+        filename: Optional[str] = None,
+        original_path: Optional[str] = None,
+        processed_path: Optional[str] = None,
+        raw_landmarks: Any = None,
+    ) -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO analyses
-                (total, normalized, pain_likely, breakdown_json,
-                 processing_ms, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (filename, original_path, processed_path,
+                     total, normalized, pain_likely,
+                     breakdown_json, landmarks_json,
+                     processing_ms, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    filename,
+                    original_path,
+                    processed_path,
                     result.breakdown.total,
                     result.breakdown.normalized,
                     int(result.pain_likely),
                     json.dumps(result.breakdown.as_dict()),
+                    json.dumps(raw_landmarks) if raw_landmarks is not None else None,
                     result.processing_ms,
                     result.created_at.isoformat(),
                 ),
