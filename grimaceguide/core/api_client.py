@@ -1,7 +1,6 @@
 """Client for the external landmark-detection API.
 
-Speaks the same wire protocol as grimaceguide.api.send_image_for_processing
-but returns a typed LandmarkSet instead of a raw JSON list.
+Returns a typed LandmarkSet instead of a raw JSON list.
 """
 from __future__ import annotations
 

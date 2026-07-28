@@ -6,8 +6,7 @@ from typing import Iterable, Mapping
 from grimaceguide.core.models import Landmark, LandmarkSet
 
 
-# The 48-point label order used by the existing GrimaceGuide API integration.
-# Kept in sync with grimaceguide.api.get_labeled_landmarks.
+# The 48-point label order used by the GrimaceGuide landmark API integration.
 LANDMARK_LABELS: tuple[str, ...] = tuple(
     [f"left_ear_{i + 1}" for i in range(5)]
     + [f"right_ear_{i + 1}" for i in range(5)]
@@ -56,10 +55,9 @@ def landmarks_from_flat_array(
 
 
 def landmarks_to_labeled_dict(landmarks: LandmarkSet) -> dict[str, dict[str, float]]:
-    """Convert a LandmarkSet into the legacy labeled dict shape.
+    """Convert a LandmarkSet into a labeled dict shape.
 
-    Produces {'left_ear_1': {'x': ..., 'y': ...}, ..., 'chin_point': {'x': ..., 'y': ...}}
-    exactly as `grimaceguide.api.get_labeled_landmarks` does.
+    Produces {'left_ear_1': {'x': ..., 'y': ...}, ..., 'chin_point': {'x': ..., 'y': ...}}.
     """
     labeled: dict[str, dict[str, float]] = {}
     for i, point in enumerate(landmarks.points):

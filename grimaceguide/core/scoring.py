@@ -1,10 +1,8 @@
 """Feline Grimace Scale scoring.
 
-Per-AU geometry ported from the original grimaceguide.fgsScoreCalc prototype,
-operating on typed Landmark/LandmarkSet objects instead of raw {'x':.., 'y':..}
-dicts. grimaceguide.fgsScoreCalc itself remains in place for the legacy
-Kivy path (grimaceguide.api -> grimaceguide.ui.app) — this module no longer
-depends on it.
+Per-AU geometry ported from the original grimaceguide.fgsScoreCalc prototype (since
+removed), operating on typed Landmark/LandmarkSet objects instead of raw
+{'x':.., 'y':..} dicts.
 """
 from __future__ import annotations
 

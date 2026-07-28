@@ -16,12 +16,6 @@ RESOURCES_DIR = PACKAGE_DIR / 'resources'
 IMAGES_GUI_DIR = BASE_DIR / 'imagesGUI'
 #Directory for explaining scoring in GUI images
 
-#Database settings
-#SQLite database for storing images, scores and processing results
-DATABASE_NAME = 'grimace_scores.db'
-DATABASE_PATH = BASE_DIR / DATABASE_NAME
-#Stores database in project root for easy access
-
 #API settings
 API_URL = "http://34.165.76.57:6000/landmarks"
 #External API endpoint for advanced image processing and landmark detection
