@@ -6,6 +6,7 @@ from typing import Optional
 
 from grimaceguide.core.api_client import LandmarkAPIClient
 from grimaceguide.core.image_processing import ImageInput, load_image
+from grimaceguide.core.landmarks import landmarks_to_labeled_dict
 from grimaceguide.core.models import AnalysisOutcome
 from grimaceguide.core.scoring import compute_grimace_score
 from grimaceguide.infrastructure.repository import SQLiteResultRepository
@@ -41,6 +42,7 @@ class AnalysisService:
                 result,
                 filename=display_name,
                 original_path=image_input if isinstance(image_input, str) else None,
+                raw_landmarks=landmarks_to_labeled_dict(landmarks),
             )
 
         return AnalysisOutcome(

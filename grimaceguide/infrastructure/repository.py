@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, Protocol
@@ -14,9 +15,25 @@ from grimaceguide.core.models import (
 )
 
 
+@dataclass(frozen=True)
+class StoredAnalysis:
+    """A GrimaceResult as read back from the repository, with its persisted metadata.
+
+    `raw_landmarks` is the labeled-dict shape written by AnalysisService (see
+    core.landmarks.landmarks_to_labeled_dict) — not a typed LandmarkSet, since
+    the table doesn't store the original image dimensions needed to rebuild one.
+    """
+    id: int
+    result: GrimaceResult
+    filename: Optional[str] = None
+    original_path: Optional[str] = None
+    processed_path: Optional[str] = None
+    raw_landmarks: Optional[dict[str, dict[str, float]]] = None
+
+
 class ResultRepository(Protocol):
     def save(self, result: GrimaceResult) -> int: ...
-    def list_recent(self, limit: int = 20) -> list[GrimaceResult]: ...
+    def list_recent(self, limit: int = 20) -> list[StoredAnalysis]: ...
 
 
 class SQLiteResultRepository:
@@ -84,13 +101,13 @@ class SQLiteResultRepository:
             )
             return int(cur.lastrowid)
 
-    def list_recent(self, limit: int = 20) -> list[GrimaceResult]:
+    def list_recent(self, limit: int = 20) -> list[StoredAnalysis]:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM analyses ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
 
-        results: list[GrimaceResult] = []
+        results: list[StoredAnalysis] = []
         for row in rows:
             data = json.loads(row["breakdown_json"])
             breakdown = ActionUnitBreakdown(
@@ -100,12 +117,20 @@ class SQLiteResultRepository:
                 whiskers=ActionUnitScore(data["whiskers"]),
                 head=ActionUnitScore(data["head"]),
             )
+            result = GrimaceResult(
+                breakdown=breakdown,
+                pain_likely=bool(row["pain_likely"]),
+                processing_ms=float(row["processing_ms"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+            )
             results.append(
-                GrimaceResult(
-                    breakdown=breakdown,
-                    pain_likely=bool(row["pain_likely"]),
-                    processing_ms=float(row["processing_ms"]),
-                    created_at=datetime.fromisoformat(row["created_at"]),
+                StoredAnalysis(
+                    id=int(row["id"]),
+                    result=result,
+                    filename=row["filename"],
+                    original_path=row["original_path"],
+                    processed_path=row["processed_path"],
+                    raw_landmarks=json.loads(row["landmarks_json"]) if row["landmarks_json"] else None,
                 )
             )
         return results
