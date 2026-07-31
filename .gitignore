@@ -43,6 +43,13 @@ logs/
 # Processed images directory
 **/processed/
 
+# ML training data and trained weights (large, pulled/produced locally or in Colab — not checked in)
+ml/data/
+ml/checkpoints/
+
+# Ad-hoc local test images
+imagesGUI/some_cat_image.jpg
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

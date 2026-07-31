@@ -1,0 +1,7 @@
+# Extra dependencies for training the local landmark model.
+# Not part of the app's requirements.txt — only needed when running ml/train.py.
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.20.0
+Pillow>=9.0.0
+tqdm>=4.65.0
