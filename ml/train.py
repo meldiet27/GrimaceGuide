@@ -11,7 +11,7 @@ import argparse
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
 from tqdm import tqdm
 
@@ -23,16 +23,20 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 def build_dataloaders(data_dir, image_size, batch_size, val_split, seed, num_workers):
-    transform = transforms.Compose(
+    normalize = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)]
     )
-    dataset = CatFLWDataset(data_dir, image_size=image_size, transform=transform)
+    # Two dataset instances over the same files: augmentation only ever applies to the
+    # training split, so validation loss stays a clean, comparable signal across runs.
+    train_dataset = CatFLWDataset(data_dir, image_size=image_size, transform=normalize, augment=True)
+    val_dataset = CatFLWDataset(data_dir, image_size=image_size, transform=normalize, augment=False)
 
-    val_size = max(1, int(len(dataset) * val_split))
-    train_size = len(dataset) - val_size
-    train_set, val_set = random_split(
-        dataset, [train_size, val_size], generator=torch.Generator().manual_seed(seed)
-    )
+    n = len(train_dataset)
+    val_size = max(1, int(n * val_split))
+    train_size = n - val_size
+    indices = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
+    train_set = Subset(train_dataset, indices[:train_size])
+    val_set = Subset(val_dataset, indices[train_size:])
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
