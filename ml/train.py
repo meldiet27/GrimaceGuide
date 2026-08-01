@@ -15,11 +15,31 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
 from tqdm import tqdm
 
-from ml.dataset import CatFLWDataset
+from ml.dataset import NUM_LANDMARKS, CatFLWDataset
 from ml.model import LandmarkNet, decode_heatmaps
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
+
+# Ear-region landmark indices (see ml/diagnose.py): these 10 points came out of
+# training with near-zero prediction/ground-truth correlation despite plenty of
+# prediction variance -- not the mean-collapse the heatmap switch fixed for the
+# other 38 points, but ears being harder to localize (they rotate independently
+# of head pose, thin/low-contrast cartilage edges). Upweighting their loss
+# pushes the model to spend more of its capacity getting these right.
+EAR_LANDMARK_INDICES = list(range(22, 32))
+EAR_LOSS_WEIGHT = 3.0
+
+
+def make_weighted_heatmap_loss(device):
+    weights = torch.ones(NUM_LANDMARKS, device=device)
+    weights[EAR_LANDMARK_INDICES] = EAR_LOSS_WEIGHT
+    weights = weights.view(1, NUM_LANDMARKS, 1, 1)
+
+    def loss_fn(preds, targets):
+        return (weights * (preds - targets) ** 2).mean()
+
+    return loss_fn
 
 
 def build_dataloaders(data_dir, image_size, batch_size, val_split, seed, num_workers):
@@ -97,7 +117,7 @@ def main():
     print(f"train samples={len(train_loader.dataset)}  val samples={len(val_loader.dataset)}  device={device}")
 
     model = LandmarkNet(pretrained=True).to(device)
-    criterion = torch.nn.MSELoss()
+    criterion = make_weighted_heatmap_loss(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     output_path = Path(args.output)
