@@ -20,13 +20,29 @@ from torch.utils.data import Dataset
 from torchvision.transforms import ColorJitter
 
 NUM_LANDMARKS = 48
+HEATMAP_STRIDE = 4  # heatmap resolution = image_size // HEATMAP_STRIDE
+HEATMAP_SIGMA = 1.5  # Gaussian stddev in heatmap pixels
+
+
+def _render_heatmaps(points: np.ndarray, image_size: int) -> np.ndarray:
+    """Renders one Gaussian heatmap per landmark at image_size // HEATMAP_STRIDE resolution."""
+    size = image_size // HEATMAP_STRIDE
+    grid_y, grid_x = np.mgrid[0:size, 0:size].astype(np.float32)
+    heatmaps = np.empty((len(points), size, size), dtype=np.float32)
+    for i, (nx, ny) in enumerate(points):
+        cx, cy = nx * (size - 1), ny * (size - 1)
+        heatmaps[i] = np.exp(-((grid_x - cx) ** 2 + (grid_y - cy) ** 2) / (2 * HEATMAP_SIGMA ** 2))
+    return heatmaps
 
 
 class CatFLWDataset(Dataset):
-    """Crops each image to its face bounding box and yields (image, flattened landmarks).
+    """Crops each image to its face bounding box and yields (image, heatmaps, flattened landmarks).
 
-    Landmarks are returned as a (NUM_LANDMARKS * 2,) float32 array normalized to [0, 1]
-    relative to the (padded) crop, so they're independent of the original image size.
+    Landmarks are normalized to [0, 1] relative to the (padded) crop, so they're
+    independent of the original image size. Heatmaps are rendered from those same
+    normalized points at training resolution -- they're the actual training target;
+    the flattened points are only returned for logging/visualization (a decoded
+    pixel-error metric, or ground-truth dots to draw).
 
     When augment=True, each sample additionally gets a random small rotation, a random
     jitter of the crop box (translation + scale), and color jitter -- all landmark-safe
@@ -113,7 +129,9 @@ class CatFLWDataset(Dataset):
         points[:, 1] /= crop_h
         points = np.clip(points, 0.0, 1.0)
 
+        heatmaps = _render_heatmaps(points, self.image_size)
+
         if self.transform:
             crop = self.transform(crop)
 
-        return crop, points.reshape(-1).astype(np.float32, copy=False)
+        return crop, heatmaps, points.reshape(-1).astype(np.float32, copy=False)

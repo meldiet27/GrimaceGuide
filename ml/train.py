@@ -16,7 +16,7 @@ from torchvision import transforms
 from tqdm import tqdm
 
 from ml.dataset import CatFLWDataset
-from ml.model import LandmarkNet
+from ml.model import LandmarkNet, decode_heatmaps
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
@@ -44,20 +44,34 @@ def build_dataloaders(data_dir, image_size, batch_size, val_split, seed, num_wor
 
 
 def run_epoch(model, loader, device, criterion, optimizer=None):
+    """Runs one train or eval pass. Returns (avg_loss, avg_landmark_error).
+
+    avg_landmark_error is the mean absolute error, in normalized [0, 1] crop
+    units, between argmax-decoded predicted points and ground truth -- only
+    computed during eval (optimizer=None), since it's just for logging: a
+    heatmap-MSE number alone isn't comparable to the coordinate-MSE numbers
+    from before the heatmap switch, but this decoded error is.
+    """
     is_train = optimizer is not None
     model.train(is_train)
     total_loss = 0.0
+    total_landmark_error = 0.0
     with torch.set_grad_enabled(is_train):
-        for images, targets in tqdm(loader, leave=False):
-            images, targets = images.to(device), targets.to(device)
+        for images, heatmaps, points in tqdm(loader, leave=False):
+            images, heatmaps = images.to(device), heatmaps.to(device)
             preds = model(images)
-            loss = criterion(preds, targets)
+            loss = criterion(preds, heatmaps)
             if is_train:
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+            else:
+                decoded = decode_heatmaps(preds.detach()).cpu()
+                total_landmark_error += (decoded - points).abs().mean().item() * images.size(0)
             total_loss += loss.item() * images.size(0)
-    return total_loss / len(loader.dataset)
+    avg_loss = total_loss / len(loader.dataset)
+    avg_landmark_error = None if is_train else total_landmark_error / len(loader.dataset)
+    return avg_loss, avg_landmark_error
 
 
 def main():
@@ -91,9 +105,12 @@ def main():
 
     best_val_loss = float("inf")
     for epoch in range(1, args.epochs + 1):
-        train_loss = run_epoch(model, train_loader, device, criterion, optimizer)
-        val_loss = run_epoch(model, val_loader, device, criterion)
-        print(f"epoch {epoch}/{args.epochs}  train_loss={train_loss:.5f}  val_loss={val_loss:.5f}")
+        train_loss, _ = run_epoch(model, train_loader, device, criterion, optimizer)
+        val_loss, val_landmark_error = run_epoch(model, val_loader, device, criterion)
+        print(
+            f"epoch {epoch}/{args.epochs}  train_loss={train_loss:.5f}  "
+            f"val_loss={val_loss:.5f}  val_landmark_error={val_landmark_error:.4f}"
+        )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss

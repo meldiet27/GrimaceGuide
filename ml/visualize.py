@@ -22,7 +22,7 @@ from torchvision import transforms
 from pathlib import Path
 
 from ml.dataset import CatFLWDataset
-from ml.model import LandmarkNet
+from ml.model import LandmarkNet, decode_heatmaps
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
@@ -74,8 +74,9 @@ def main():
 
     with torch.no_grad():
         for i in indices:
-            image_tensor, target = dataset[i]
-            pred = model(image_tensor.unsqueeze(0).to(device)).cpu().squeeze(0).numpy()
+            image_tensor, _, target = dataset[i]
+            pred_heatmaps = model(image_tensor.unsqueeze(0).to(device))
+            pred = decode_heatmaps(pred_heatmaps).cpu().squeeze(0).numpy()
 
             display_image = transforms.ToPILImage()(denormalize(image_tensor))
             draw_points(display_image, target.reshape(-1, 2), color="lime")
