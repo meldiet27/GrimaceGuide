@@ -87,8 +87,11 @@ class CatFLWDataset(Dataset):
         crop = image.crop((x_min, y_min, x_max, y_max))
         crop_w, crop_h = crop.size
 
-        # points in crop-local pixel coordinates
-        points = np.array(label["labels"], dtype=np.float32) - [x_min, y_min]
+        # points in crop-local pixel coordinates (stay float32 throughout -- subtracting a
+        # plain list/scalar here would silently upcast to float64 and break loss.backward())
+        points = np.array(label["labels"], dtype=np.float32)
+        points[:, 0] -= x_min
+        points[:, 1] -= y_min
 
         if self.augment and self.max_rotation_deg > 0:
             angle_deg = random.uniform(-self.max_rotation_deg, self.max_rotation_deg)
@@ -113,4 +116,4 @@ class CatFLWDataset(Dataset):
         if self.transform:
             crop = self.transform(crop)
 
-        return crop, points.reshape(-1)
+        return crop, points.reshape(-1).astype(np.float32, copy=False)
