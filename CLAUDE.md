@@ -46,6 +46,10 @@ together; everything else depends on abstractions, not concrete implementations.
   context.
 - `PAIN_THRESHOLD = 0.39` (core/scoring.py) is the FGS-validated cutoff — don't change without a
   reason tied to the FGS literature (see README references).
+- The per-AU thresholds inside `_score_ears`/`_score_eyes`/etc. (unlike `PAIN_THRESHOLD`) are
+  **not** from FGS literature — no cited paper defines per-AU geometric formulas. The eyes AU
+  thresholds were empirically recalibrated against real CatFLW data; see
+  `docs/eye_scoring_calibration.md` before changing them again.
 
 ## History
 

@@ -108,11 +108,18 @@ def _score_eyes(labeled: dict[str, Landmark]) -> ActionUnitScore:
     if not avg_h_dist or avg_h_dist <= 0:
         return ActionUnitScore.ABSENT
 
-    # NOTE: thresholds below are carried over from the top-pair/bottom-pair
-    # formula and have not been revalidated against this corner-based h_dist,
-    # which measures a different (larger) baseline than before.
+    # Thresholds below are empirically calibrated, not from FGS literature --
+    # neither of the two automated-FGS papers in README.md's references define
+    # an explicit eye-openness formula/cutoff (both use end-to-end learned
+    # models on raw landmarks instead of hand-crafted per-AU geometry), so
+    # unlike PAIN_THRESHOLD=0.39 there's no published number to align to. See
+    # docs/eye_scoring_calibration.md for the full derivation; summary: ratio
+    # over all 2079 CatFLW photos has mean=0.75, median=0.77, min=0.271 (the
+    # single most-squinted-looking cat in the dataset, visually confirmed).
+    # OBVIOUS was raised from 0.25 to 0.30 (2026-08-02) so that real extreme
+    # squinting actually reaches OBVIOUS instead of maxing out at MODERATE.
     eye_aspect_ratio = avg_v_dist / avg_h_dist
-    if eye_aspect_ratio < 0.25:
+    if eye_aspect_ratio < 0.30:
         return ActionUnitScore.OBVIOUS
     if eye_aspect_ratio < 0.5:
         return ActionUnitScore.MODERATE
