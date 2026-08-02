@@ -46,6 +46,7 @@ logs/
 # ML training data and trained weights (large, pulled/produced locally or in Colab — not checked in)
 ml/data/
 ml/checkpoints/
+ml/predictions/
 
 # Ad-hoc local test images
 imagesGUI/some_cat_image.jpg
