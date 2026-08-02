@@ -32,13 +32,16 @@ def build_service(
     processed_dir: str | Path | None = None,
     landmark_source: str | None = None,
     local_checkpoint_path: str | Path | None = None,
+    local_bbox_checkpoint_path: str | Path | None = None,
 ) -> AnalysisService:
     """Wire together an AnalysisService with sensible defaults.
 
     landmark_source selects between the remote API (default) and the local
     ml/-trained model ("local", requires torch -- see
     grimaceguide/infrastructure/local_landmark_model.py). Override via
-    GG_LANDMARK_SOURCE / GG_LOCAL_CHECKPOINT env vars.
+    GG_LANDMARK_SOURCE / GG_LOCAL_CHECKPOINT / GG_LOCAL_BBOX_CHECKPOINT env
+    vars. The bbox checkpoint is optional -- without it, LocalLandmarkModel
+    falls back to treating the whole input image as an already-cropped face.
     """
     resolved_source = (landmark_source or os.getenv("GG_LANDMARK_SOURCE", "remote")).lower()
 
@@ -51,7 +54,13 @@ def build_service(
                 "GG_LANDMARK_SOURCE=local requires GG_LOCAL_CHECKPOINT or "
                 "local_checkpoint_path= pointing at a trained ml/ checkpoint."
             )
-        api_client = LocalLandmarkModel(checkpoint_path=resolved_checkpoint)
+        resolved_bbox_checkpoint = local_bbox_checkpoint_path or os.getenv(
+            "GG_LOCAL_BBOX_CHECKPOINT"
+        )
+        api_client = LocalLandmarkModel(
+            checkpoint_path=resolved_checkpoint,
+            bbox_checkpoint_path=resolved_bbox_checkpoint,
+        )
     elif resolved_source == "remote":
         resolved_url = api_url or os.getenv("GG_API_URL", _DEFAULT_API_URL)
         if not resolved_url:

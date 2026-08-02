@@ -1,10 +1,13 @@
 # Local landmark model training
 
-Trains a CNN (ResNet18 backbone + heatmap head) to localize the 48 CatFLW facial landmarks from a
-cat face crop. This is training/experimentation code — it does not depend on and is not depended
-on by `grimaceguide/`. Once a checkpoint is good enough, a future `LocalLandmarkModel` adapter
-under `grimaceguide/infrastructure/` can load it and be wired in via `container.py`, matching the
-existing `LandmarkAPIClient` interface. That wiring is not done yet.
+Trains two CNNs used together by `grimaceguide/infrastructure/local_landmark_model.py`
+(`LocalLandmarkModel`, wired in via `container.py`'s `landmark_source="local"` / `GG_LANDMARK_SOURCE=local`):
+
+1. `bbox_model.py` / `train_bbox.py` — finds the cat's face in an arbitrary photo.
+2. `model.py` / `train.py` — localizes 48 facial landmarks within that face crop.
+
+Both train from the same CatFLW dataset, just against different labels (`bounding_boxes` vs.
+`labels`). Neither depends on `grimaceguide/`; `grimaceguide/` depends on their checkpoints.
 
 Predicts a spatial heatmap per landmark rather than directly regressing (x, y) coordinates: an
 earlier direct-regression version collapsed on the tightly-clustered points (eyes/nose/muzzle),
@@ -26,6 +29,13 @@ across aligned crops. Heatmaps avoid this since each landmark gets its own spati
   decoded pixel-error metric (mean absolute error in normalized crop units) each epoch, since raw
   heatmap-MSE isn't a human-interpretable accuracy signal on its own. Saves the best
   (lowest val loss) checkpoint.
+- `bbox_dataset.py` — `CatFLWBBoxDataset`, yields the *whole* (uncropped) image plus its
+  ground-truth `bounding_boxes` label normalized `[0, 1]`. Unlike landmarks, a bounding box has no
+  left/right semantic identity, so random horizontal flip is safe here as augmentation.
+- `bbox_model.py` — `BBoxNet`, a ResNet18 with a 4-output sigmoid-activated regression head
+  (`x_min, y_min, x_max, y_max`, normalized).
+- `train_bbox.py` — CLI training loop. Loss is `SmoothL1Loss`; logs mean IoU between predicted and
+  ground-truth boxes each epoch as the interpretable accuracy signal.
 - `data/` — gitignored. Put the extracted CatFLW dataset here as `ml/data/CatFLW dataset/`
   (containing `images/` and `labels/`), or point `--data-dir` anywhere else.
 - `checkpoints/` — gitignored. Trained weights land here by default.
@@ -34,6 +44,7 @@ across aligned crops. Heatmaps avoid this since each landmark gets its own spati
 
 ```bash
 pip install -r ml/requirements.txt
+python -m ml.train_bbox --data-dir "ml/data/CatFLW dataset" --output ml/checkpoints/bbox_net.pt
 python -m ml.train --data-dir "ml/data/CatFLW dataset" --output ml/checkpoints/landmark_net.pt
 ```
 
@@ -64,6 +75,11 @@ drive.mount('/content/drive')
 !mkdir -p "ml/data/CatFLW dataset"
 !unzip -q "/content/drive/MyDrive/CatFLW dataset.zip" -d "ml/data/CatFLW dataset"
 
+!python -m ml.train_bbox \
+    --data-dir "ml/data/CatFLW dataset" \
+    --epochs 30 \
+    --output ml/checkpoints/bbox_net.pt
+
 !python -m ml.train \
     --data-dir "ml/data/CatFLW dataset" \
     --epochs 30 \
@@ -71,9 +87,10 @@ drive.mount('/content/drive')
 ```
 
 `/content` is ephemeral — it's wiped if the runtime disconnects or restarts. As soon as training
-finishes, immediately copy the checkpoint back to Drive in the same runtime, before doing anything
-else:
+finishes, immediately copy both checkpoints back to Drive in the same runtime, before doing
+anything else:
 ```python
+!cp ml/checkpoints/bbox_net.pt "/content/drive/MyDrive/bbox_net.pt"
 !cp ml/checkpoints/landmark_net.pt "/content/drive/MyDrive/landmark_net.pt"
 ```
 
