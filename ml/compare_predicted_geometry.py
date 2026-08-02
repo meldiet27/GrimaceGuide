@@ -53,7 +53,7 @@ from grimaceguide.core.scoring import (
     _whisker_geometry,
     compute_grimace_score,
 )
-from ml.dataset import CatFLWDataset
+from ml.dataset import subject_disjoint_split
 from ml.model import LandmarkNet, decode_heatmaps
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -77,21 +77,26 @@ SHIPPING_THRESHOLDS = {
 }
 
 
-def val_stems(data_dir: Path, val_split: float, seed: int) -> list[str]:
-    """Replicates the *legacy* index-level split the current checkpoints were trained under.
+def val_stems(
+    data_dir: Path, val_split: float, seed: int, group_by_subject: bool = False
+) -> list[str]:
+    """Rebuilds the val split a checkpoint was trained under, so evaluation stays held out.
 
-    This deliberately does NOT use ml.train._subject_disjoint_split: the point is to
-    reproduce the split the checkpoint being evaluated actually saw. That split leaks at
-    the cat level (310 of 311 of these "val" images have a same-cat photo in training),
-    so results here are optimistic -- see docs/heatmap_decoding.md. Once a checkpoint is
-    retrained under the subject-disjoint split, switch this over to match it.
+    Which split to use is not a choice -- it must match the checkpoint being evaluated, or
+    the "val" images were in its training set. Checkpoints written since the split fix
+    record this in checkpoint["split"], and main() reads it from there; the index-level
+    branch below only exists for older checkpoints, and leaks at the cat level (310 of 311
+    of its val images have a same-cat photo in training). See docs/heatmap_decoding.md.
     """
     stems = sorted(p.stem for p in (data_dir / "images").glob("*.png"))
+    if group_by_subject:
+        _, val_indices = subject_disjoint_split(stems, val_split, seed)
+        return [stems[i] for i in val_indices]
+
     n = len(stems)
     val_size = max(1, int(n * val_split))
-    train_size = n - val_size
     indices = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
-    return [stems[i] for i in indices[train_size:]]
+    return [stems[i] for i in indices[n - val_size :]]
 
 
 def padded_box(box, image_w: int, image_h: int) -> tuple[float, float, float, float]:
@@ -251,10 +256,25 @@ def main() -> None:
         device=str(device),
     )
 
-    stems = val_stems(data_dir, args.val_split, args.seed)
+    # Prefer the split the checkpoint records over the CLI defaults -- guessing this
+    # wrong silently evaluates on training images (see docs/heatmap_decoding.md).
+    recorded = checkpoint.get("split")
+    if recorded:
+        val_split, seed = recorded["val_split"], recorded["seed"]
+        group_by_subject = recorded["group_by_subject"]
+        source = "checkpoint-recorded"
+    else:
+        val_split, seed, group_by_subject = args.val_split, args.seed, False
+        source = "ASSUMED (checkpoint predates split recording)"
+
+    stems = val_stems(data_dir, val_split, seed, group_by_subject)
     if args.limit:
         stems = stems[: args.limit]
-    print(f"Evaluating {len(stems)} held-out val images on {device} (image_size={image_size})")
+    split_kind = "subject-disjoint" if group_by_subject else "index-level (LEAKY)"
+    print(
+        f"Evaluating {len(stems)} val images on {device} (image_size={image_size})\n"
+        f"  split: {split_kind}, val_split={val_split}, seed={seed} [{source}]"
+    )
 
     rows: dict[str, list[dict]] = {source: [] for source in SOURCES}
     for stem in tqdm(stems):

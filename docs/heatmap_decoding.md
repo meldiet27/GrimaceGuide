@@ -153,6 +153,50 @@ Acted on in the meantime: `core/models.py` marks eyes/muzzle/whiskers as
 `LOW_CONFIDENCE_ACTION_UNITS`, and the Kivy results panel and `scripts/smoke_analyze.py` both flag
 them rather than presenting five equally-weighted scores.
 
+## Retrained under the subject-disjoint split (2026-08-02)
+
+Both models were retrained from scratch with `_subject_disjoint_split` (289 train cats / 50 val
+cats, zero shared), giving the first evaluation on cats the model has genuinely never seen.
+`ml/diagnose.py` on the new checkpoint: **0/48 landmarks collapsed, 0/48 uncorrelated, mean
+correlation 0.972** — slightly better than the leaky checkpoint's 0.967, and now on unseen cats.
+BBoxNet reached val IoU 0.82.
+
+**Honest per-AU results** (`pred_gtbox`, 313 unseen-cat images):
+
+| AU | κ (honest) | agreement | majority baseline | verdict |
+|---|---|---|---|---|
+| head | **0.537** | 80.2% | 79.2% | usable |
+| ears | **0.492** | 86.6% | 80.8% | usable |
+| whiskers | 0.051 | 87.2% | 88.5% | still noise |
+| eyes | -0.004 | 94.6% | 94.9% | still noise |
+| muzzle | -0.014 | 65.5% | 75.1% | still noise |
+
+Pain flag κ = 0.24 (85.0% agreement against an 86.6% never-flag baseline).
+
+**Landmark precision did not improve, and the training-log metric misled about this.** Measured
+identically on both checkpoints:
+
+| | training-log metric | face-width error |
+|---|---|---|
+| old checkpoint (leaky split) | 0.0105 | 5.07% |
+| new checkpoint (unseen cats) | 0.0107 | **5.15%** |
+
+The new run's log showed `val_landmark_error` falling to 0.0107 against a remembered 0.0558 for the
+old checkpoint, which looked like a 5× gain. It was not: re-measuring the old checkpoint *now* gives
+0.0105. The 0.0558 figure came from an earlier code state and was never comparable. This is the
+third time in this project an aggregate training metric has pointed the wrong way — always confirm
+with `ml/diagnose.py` and `ml/compare_predicted_geometry.py`.
+
+Noise-to-signal is therefore unchanged (eyes 24.8%, muzzle 20.4%, whiskers 18.2%, ears 2.5%), and
+the failing AUs stay at chance exactly as the precision analysis predicted.
+
+**What the retrain actually bought:** trustworthy numbers rather than better ones. It also showed the
+model generalizes — 5.07% on memorized cats vs 5.15% on unseen ones is near-identical, so the
+cat-level leak inflated landmark precision far less than feared. It did inflate the AU scores
+modestly (ears κ 0.572 leaky → 0.492 honest). The `LOW_CONFIDENCE_ACTION_UNITS` marking is now
+empirically validated rather than provisional, and ears/head are genuinely measured rather than
+being an optimistic ceiling.
+
 ## Caveats
 
 - **The evaluation split leaked at the cat level — this is the biggest caveat here.** CatFLW stems

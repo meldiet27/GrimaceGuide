@@ -56,16 +56,20 @@ together; everything else depends on abstractions, not concrete implementations.
 - **Eyes, muzzle and whiskers are not trustworthy from *predicted* landmarks** — they score Cohen's
   κ ≈ 0 against ground-truth-landmark results, versus ≈ 0.5–0.6 for ears/head. The landmark model's
   ~5%-of-face-width error is 18–26% of the short distances those three AUs measure. This is a
-  model-precision limit, not a threshold problem, and it survives reformulation and finer decoding —
-  don't try to fix it by moving cutoffs. `core/models.py::LOW_CONFIDENCE_ACTION_UNITS` marks them and
-  the UI de-emphasises them. The ears/head figures are an optimistic ceiling, not a validation (see
-  the split caveat below). Full derivation in `docs/heatmap_decoding.md`; re-measure with
+  model-precision limit, not a threshold problem, and it survives reformulation, finer decoding, and
+  a clean retrain — don't try to fix it by moving cutoffs. `core/models.py::LOW_CONFIDENCE_ACTION_UNITS`
+  marks them and the UI de-emphasises them. Measured on 50 genuinely unseen cats: head κ 0.54, ears
+  κ 0.49, the other three ≈ 0. Full derivation in `docs/heatmap_decoding.md`; re-measure with
   `ml/compare_predicted_geometry.py` after any checkpoint or decoding change.
 - **Split CatFLW by cat, not by image.** Stems are `<subject>_<shot>` and the dataset is ~339 cats ×
   ~6 photos, so an index-level split leaks: the old default put a same-cat photo in training for
-  310 of 311 val images. `ml/train.py::_subject_disjoint_split` (on by default) fixes this, but the
-  current `ml/checkpoints/*.pt` predate it and were trained leaky — so every held-out number
-  measured on them is optimistic, and an honest one needs a retrain.
+  310 of 311 val images. `ml/dataset.py::subject_disjoint_split` (used by both trainers, on by
+  default) fixes this. Checkpoints now record their own split config, and
+  `compare_predicted_geometry.py` reads it rather than guessing.
+- **Don't trust `val_landmark_error` (or any aggregate loss) to compare checkpoints.** It has pointed
+  the wrong way three times here — hiding a collapsed model twice, then appearing to show a 5×
+  precision gain from a retrain that actually changed nothing (5.07% → 5.15% of face width). Confirm
+  with `ml/diagnose.py` (per-landmark correlation) and `ml/compare_predicted_geometry.py` (per-AU κ).
 
 ## History
 
