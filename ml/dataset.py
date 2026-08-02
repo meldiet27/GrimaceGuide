@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +23,16 @@ from torchvision.transforms import ColorJitter
 NUM_LANDMARKS = 48
 HEATMAP_STRIDE = 4  # heatmap resolution = image_size // HEATMAP_STRIDE
 HEATMAP_SIGMA = 1.5  # Gaussian stddev in heatmap pixels
+
+
+def subject_of(stem: str) -> str:
+    """Cat identity for a sample stem, e.g. '00000001_012' -> '00000001'.
+
+    CatFLW holds ~6 photos of each of its 339 cats (stem = <subject>_<shot>), so
+    splitting on image index alone puts other photos of the same cat on both sides
+    of the split -- see _subject_disjoint_split in ml/train.py.
+    """
+    return re.sub(r"_\d+$", "", stem)
 
 
 def _render_heatmaps(points: np.ndarray, image_size: int) -> np.ndarray:

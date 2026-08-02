@@ -67,9 +67,16 @@ class StyledButton(Button):
         self.color = COLORS['white']
 
 class ScoreRowLayout(BoxLayout):
-    """Horizontal row showing score category, value, and help button"""
-    def __init__(self, category, **kwargs):
+    """Horizontal row showing score category, value, and help button
+
+    low_confidence marks an AU the landmark model can't measure reliably (see
+    core/models.py::LOW_CONFIDENCE_ACTION_UNITS) -- the row is visually de-emphasised
+    and its score annotated, so an untrustworthy number doesn't read the same as a
+    validated one.
+    """
+    def __init__(self, category, low_confidence=False, **kwargs):
         super(ScoreRowLayout, self).__init__(**kwargs)
+        self.low_confidence = low_confidence
         # Horizontal layout for category name, score value, and help button
         self.orientation = 'horizontal'
         self.padding = dp(5)
@@ -93,19 +100,21 @@ class ScoreRowLayout(BoxLayout):
         # Schedule initial drawing after widget is fully initialized
         Clock.schedule_once(self.update_canvas, 0)
         
-        # Label for category name (left side)
+        # Label for category name (left side). Low-confidence AUs are greyed and
+        # marked with an asterisk explained by the caveat under the total score.
+        label_color = (0.45, 0.45, 0.45, 1) if low_confidence else COLORS['black']
         category_label = Label(
-            text=category.upper(), 
+            text=category.upper() + (" *" if low_confidence else ""),
             size_hint_x=0.5,
-            bold=True,
-            color=COLORS['black']
+            bold=not low_confidence,
+            color=label_color
         )
-        
+
        # Score value (center)
         self.score_value = Label(
-            text="-", 
+            text="-",
             size_hint_x=0.3,
-            color=COLORS['black']
+            color=label_color
         )
         
         # Help button (right side)

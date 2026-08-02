@@ -15,6 +15,7 @@ from kivy.clock import Clock
 from ..config import COLORS, WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, SCORE_CATEGORIES
 from ..container import build_service
 from ..core.exceptions import GrimaceGuideError, ImageLoadError, LandmarkAPIError, ScoringError
+from ..core.models import LOW_CONFIDENCE_ACTION_UNITS, LOW_CONFIDENCE_NOTE
 from .widgets import BorderedBox, BackgroundLabel, StyledButton, ScoreRowLayout, ImageContainer
 from .popups import FileChooserPopup, MessagePopup, TutorialPopup, StartupChoicePopup
 
@@ -139,7 +140,9 @@ class GrimaceGuideApp(App):
         self.score_rows = {}
         
         for category in SCORE_CATEGORIES:
-            row = ScoreRowLayout(category)
+            row = ScoreRowLayout(
+                category, low_confidence=category in LOW_CONFIDENCE_ACTION_UNITS
+            )
             scores_container.add_widget(row)
             self.score_rows[category] = row  # Store reference to update later
         
@@ -175,11 +178,30 @@ class GrimaceGuideApp(App):
         
         total_score_layout.add_widget(total_label)
         total_score_layout.add_widget(self.total_score_value)
-        
+
+        # Caveat explaining the asterisks on the low-confidence AU rows. Shown
+        # unconditionally rather than only on painful results: the limitation is a
+        # property of the model, not of any particular score.
+        confidence_note = BackgroundLabel(
+            text="* " + LOW_CONFIDENCE_NOTE,
+            size_hint_y=None,
+            height=dp(80),
+            font_size=dp(11),
+            color=(0.35, 0.35, 0.35, 1),
+            bg_color=COLORS['background'],
+            halign='left',
+            valign='top'
+        )
+        # Without an explicit text_size Kivy renders the note as one clipped line.
+        confidence_note.bind(
+            size=lambda instance, value: setattr(instance, 'text_size', (value[0], None))
+        )
+
         # Assemble right panel in order (top to bottom)
         self.right_panel.add_widget(results_title)
         self.right_panel.add_widget(scores_container)
         self.right_panel.add_widget(total_score_layout)
+        self.right_panel.add_widget(confidence_note)
         self.right_panel.add_widget(Widget(size_hint_y=0.1))  # Empty spacer at bottom
         
         # Combine both panels into main layout

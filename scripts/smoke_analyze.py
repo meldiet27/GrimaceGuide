@@ -18,6 +18,7 @@ from grimaceguide.core.exceptions import (
     LandmarkAPIError,
     ScoringError,
 )
+from grimaceguide.core.models import LOW_CONFIDENCE_NOTE
 
 
 def main() -> int:
@@ -43,15 +44,23 @@ def main() -> int:
         print(f"[ERROR] {exc}")
         return 1
 
+    breakdown = outcome.result.breakdown
+    low_confidence = set(breakdown.low_confidence_units)
+    per_au = "  ".join(
+        f"{name}={score}{'*' if name in low_confidence else ''}"
+        for name, score in breakdown.as_dict().items()
+    )
+
     print("=" * 50)
     print(f"File:            {image_path}")
-    print(f"Total score:     {outcome.result.breakdown.total} / 10")
-    print(f"Normalized:      {outcome.result.breakdown.normalized:.2f}")
+    print(f"Total score:     {breakdown.total} / 10")
+    print(f"Normalized:      {breakdown.normalized:.2f}")
     print(f"Pain likely:     {outcome.result.pain_likely}")
-    print(f"Per-AU:          {outcome.result.breakdown.as_dict()}")
+    print(f"Per-AU:          {per_au}")
     print(f"Processing time: {outcome.result.processing_ms:.1f} ms")
     print(f"Persisted ID:    {outcome.persisted_id}")
     print("=" * 50)
+    print(f"* {LOW_CONFIDENCE_NOTE}")
     return 0
 
 

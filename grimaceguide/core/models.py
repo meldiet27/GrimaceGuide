@@ -28,6 +28,33 @@ class LandmarkSet:
     image_height: int
 
 
+ACTION_UNIT_NAMES: tuple[str, ...] = ("ears", "eyes", "muzzle", "whiskers", "head")
+
+# Of the five FGS action units, only these two show usable agreement (Cohen's kappa
+# 0.5-0.6) with ground-truth-landmark scoring when run on *model-predicted* landmarks.
+# The other three come out at kappa ~= 0 -- not because their thresholds are wrong,
+# but because their formulas measure facial features short enough that the landmark
+# model's error is 18-26% of the quantity being measured.
+#
+# Treat the ears/head figures as an optimistic ceiling rather than a validation: the
+# checkpoint they were measured on was trained with a cat-level-leaky split, so the
+# evaluation images were of cats the model had already seen. That leak makes the
+# kappa ~= 0 result for the other three *more* damning, not less -- they failed even
+# with that advantage. See docs/heatmap_decoding.md for the full derivation.
+#
+# The FGS total and pain flag are still computed from all five, because the scale is
+# clinically defined that way -- this only records which inputs are trustworthy, so
+# callers can avoid presenting three noisy numbers as if they carried equal weight.
+VALIDATED_ACTION_UNITS: frozenset[str] = frozenset({"ears", "head"})
+LOW_CONFIDENCE_ACTION_UNITS: frozenset[str] = frozenset({"eyes", "muzzle", "whiskers"})
+
+LOW_CONFIDENCE_NOTE = (
+    "Eyes, muzzle and whiskers are low-confidence: the landmark model is not precise "
+    "enough to measure them reliably, so those three scores -- and the total that "
+    "includes them -- should be treated as indicative only, not diagnostic."
+)
+
+
 @dataclass(frozen=True)
 class ActionUnitBreakdown:
     ears: ActionUnitScore
@@ -35,6 +62,16 @@ class ActionUnitBreakdown:
     muzzle: ActionUnitScore
     whiskers: ActionUnitScore
     head: ActionUnitScore
+
+    @property
+    def low_confidence_units(self) -> tuple[str, ...]:
+        """AU names whose value isn't trustworthy from predicted landmarks."""
+        return tuple(n for n in ACTION_UNIT_NAMES if n in LOW_CONFIDENCE_ACTION_UNITS)
+
+    @property
+    def validated_units(self) -> tuple[str, ...]:
+        """AU names empirically validated to track ground-truth-landmark scoring."""
+        return tuple(n for n in ACTION_UNIT_NAMES if n in VALIDATED_ACTION_UNITS)
 
     @property
     def total(self) -> int:

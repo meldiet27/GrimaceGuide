@@ -86,14 +86,89 @@ Making them trustworthy needs a real precision improvement — a finer heatmap
 better decoder. The eyes/whiskers κ values drifting slightly negative is noise around zero, not a
 regression; they were never meaningfully above zero.
 
+## Is heatmap resolution the bottleneck? No.
+
+The obvious next lever looked like `HEATMAP_STRIDE=2` (a 128×128 heatmap). Measuring the error in
+units of heatmap cells says otherwise — median error is 0.79 cells, and only 27.9% of errors fall
+below half a cell, which is the regime where a finer grid would help. The model is not saturating
+the grid it already has; sub-pixel refinement already collected that win.
+
+The decisive comparison is per-AU. The landmarks the *failing* AUs depend on are localized just as
+precisely as the ones the *working* AU depends on:
+
+| AU | median landmark error | κ |
+|---|---|---|
+| ears (works) | 0.71 cells | **0.62** |
+| muzzle | 0.72 cells | 0.01 |
+| eyes | 0.89 cells | ~0 |
+| whiskers | 1.09 cells | 0.05 |
+
+Muzzle's landmarks are as accurate as ears' and muzzle is still at chance, so "the model is worse at
+finding mouths than ears" is not the explanation. Feature size is. Closing the gap to ears' 2.5%
+noise-to-signal would need landmark error to drop from ~5% of face width to ~0.6% — roughly **8×**.
+A finer heatmap is worth maybe 5–10%; a larger backbone with more data might plausibly reach 2×.
+Nothing on the landmark-precision path closes 8×.
+
+## Can the formulas be reformulated? No.
+
+If short measured distances are the problem, the natural fix is formulas built on longer baselines
+or on more points (averaging n independent points cuts noise by √n). Tested on the val split, with
+each variant's threshold calibrated on ground truth to reproduce the shipped class proportions:
+
+| eye formula | κ |
+|---|---|
+| current (eyelid opening ÷ eye width) | -0.01 |
+| long baseline (eyelid opening ÷ face width) | -0.03 |
+| PCA ellipse over 4 contour points | -0.02 |
+| PCA ellipse over 4 contour + 4 pupil points | -0.01 |
+
+All at chance. The reason shows up when the metrics are compared as *continuous* values, before any
+thresholding — correlation between the ground-truth-computed and predicted-computed value, plus κ at
+progressively stricter cutoffs:
+
+| metric | *r* | κ@50% | κ@25% | κ@10% | κ@7% |
+|---|---|---|---|---|---|
+| ears angle (control) | **0.88** | 0.74 | 0.76 | 0.62 | 0.67 |
+| ears tip/base ratio (control) | **0.66** | 0.59 | 0.62 | 0.45 | 0.40 |
+| eyes, ÷ eye width | 0.09 | 0.00 | 0.01 | 0.03 | -0.01 |
+| eyes, ÷ face width | 0.15 | 0.10 | 0.05 | -0.06 | -0.03 |
+| muzzle ratio | 0.08 | 0.00 | 0.08 | 0.01 | -0.03 |
+| muzzle mouth width ÷ face width | -0.02 | 0.07 | -0.08 | -0.08 | -0.04 |
+| whiskers spread | 0.01 | -0.03 | 0.07 | 0.10 | 0.04 |
+
+κ at a median split is the easiest possible version of the task, and the three failing AUs are still
+at zero there — so this is not "signal too coarse for a strict cutoff", it is no signal at any
+granularity. Swapping the noisy denominator for face width does help slightly (*r* 0.09 → 0.15),
+exactly as the noise analysis predicts, and is still useless in absolute terms because the
+numerator — an inherently short distance — dominates.
+
+**Conclusion:** eyes, muzzle and whiskers cannot be rescued by thresholds, decoding, resolution, or
+reformulation over these landmarks. The remaining options are a substantially more precise landmark
+model, or dropping hand-crafted geometry for those AUs in favour of a learned image→score model —
+which is what both automated-FGS papers in `README.md` actually did (Steagall et al. fed raw
+landmarks to XGBoost; PMC10238514 used RF/MLP on coordinates or a ResNet on images). Neither
+hand-built per-AU geometric formulas. These results are a concrete empirical argument for why.
+
+Acted on in the meantime: `core/models.py` marks eyes/muzzle/whiskers as
+`LOW_CONFIDENCE_ACTION_UNITS`, and the Kivy results panel and `scripts/smoke_analyze.py` both flag
+them rather than presenting five equally-weighted scores.
+
 ## Caveats
 
-- **The split assumption is unverified.** `ml/compare_predicted_geometry.py::val_stems` replicates
-  `ml/train.py`'s split using the *default* `--val-split 0.15 --seed 42`. The actual checkpoint was
-  trained in Colab and those arguments were not recorded, so if they differed, some "held-out"
-  images were in training. That bias runs in the optimistic direction — real production accuracy
-  would be no better than reported here, and possibly worse — so it does not rescue the negative
-  findings, but it does mean the positive ones (ears, head) may be flattered.
+- **The evaluation split leaked at the cat level — this is the biggest caveat here.** CatFLW stems
+  are `<subject>_<shot>` and the dataset is ~339 cats with a median of 6 photos each. The split used
+  for both training and this evaluation was index-level, so **310 of 311 val images had another
+  photo of the same cat in training** — val measured memorization, not generalization.
+  `ml/train.py::_subject_disjoint_split` now splits whole cats (verified: 289 train cats / 50 val
+  cats, zero shared) and is the default, but `ml/checkpoints/*.pt` predate it and were trained
+  leaky. Consequences:
+  - **The ears/head κ ≈ 0.5–0.6 figures are an optimistic ceiling, not a validation.** They cannot be
+    corrected by re-splitting this evaluation, because the checkpoint saw photos of essentially every
+    cat in the dataset — an honest number requires retraining under the subject-disjoint split.
+  - **The κ ≈ 0 results for eyes/muzzle/whiskers get stronger, not weaker.** Those AUs failed even
+    with the advantage of being tested on cats the model had memorized.
+- **The split assumption is also unverified in the other direction.** `val_stems` assumes the Colab
+  run used the default `--val-split 0.15 --seed 42`; those arguments were never recorded.
 - κ deflates under heavy class imbalance, so treat eyes and whiskers as "unproven / likely weak"
   rather than definitively dead. **Muzzle** is the unambiguous one: its raw agreement (64.6%) falls
   *below* its own majority-class baseline (77.2%).

@@ -78,7 +78,14 @@ SHIPPING_THRESHOLDS = {
 
 
 def val_stems(data_dir: Path, val_split: float, seed: int) -> list[str]:
-    """Replicates ml.train.build_dataloaders' split so this evaluates held-out images only."""
+    """Replicates the *legacy* index-level split the current checkpoints were trained under.
+
+    This deliberately does NOT use ml.train._subject_disjoint_split: the point is to
+    reproduce the split the checkpoint being evaluated actually saw. That split leaks at
+    the cat level (310 of 311 of these "val" images have a same-cat photo in training),
+    so results here are optimistic -- see docs/heatmap_decoding.md. Once a checkpoint is
+    retrained under the subject-disjoint split, switch this over to match it.
+    """
     stems = sorted(p.stem for p in (data_dir / "images").glob("*.png"))
     n = len(stems)
     val_size = max(1, int(n * val_split))

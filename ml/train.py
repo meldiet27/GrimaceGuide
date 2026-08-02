@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
 from tqdm import tqdm
 
-from ml.dataset import NUM_LANDMARKS, CatFLWDataset
+from ml.dataset import NUM_LANDMARKS, CatFLWDataset, subject_of
 from ml.model import LandmarkNet, decode_heatmaps
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -42,7 +42,37 @@ def make_weighted_heatmap_loss(device):
     return loss_fn
 
 
-def build_dataloaders(data_dir, image_size, batch_size, val_split, seed, num_workers):
+def _subject_disjoint_split(samples, val_split, seed):
+    """Splits whole cats into train/val, never the same cat's photos across both.
+
+    CatFLW is ~339 cats with a median of 6 photos each, so an index-level random
+    split leaks: measured on the default 0.15/seed-42 split, 310 of 311 val images
+    had another photo of the same cat in training. That makes val a memorization
+    check rather than a generalization one and inflates every held-out metric.
+    Whole subjects are assigned to val until the image-count target is reached.
+    """
+    by_subject: dict[str, list[int]] = {}
+    for index, stem in enumerate(samples):
+        by_subject.setdefault(subject_of(stem), []).append(index)
+
+    subjects = sorted(by_subject)
+    order = torch.randperm(len(subjects), generator=torch.Generator().manual_seed(seed)).tolist()
+
+    target = max(1, int(len(samples) * val_split))
+    val_indices: list[int] = []
+    for position in order:
+        if len(val_indices) >= target:
+            break
+        val_indices.extend(by_subject[subjects[position]])
+
+    val_lookup = set(val_indices)
+    train_indices = [i for i in range(len(samples)) if i not in val_lookup]
+    return train_indices, sorted(val_indices)
+
+
+def build_dataloaders(
+    data_dir, image_size, batch_size, val_split, seed, num_workers, group_by_subject=True
+):
     normalize = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)]
     )
@@ -52,11 +82,19 @@ def build_dataloaders(data_dir, image_size, batch_size, val_split, seed, num_wor
     val_dataset = CatFLWDataset(data_dir, image_size=image_size, transform=normalize, augment=False)
 
     n = len(train_dataset)
-    val_size = max(1, int(n * val_split))
-    train_size = n - val_size
-    indices = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
-    train_set = Subset(train_dataset, indices[:train_size])
-    val_set = Subset(val_dataset, indices[train_size:])
+    if group_by_subject:
+        train_indices, val_indices = _subject_disjoint_split(
+            train_dataset.samples, val_split, seed
+        )
+    else:
+        # Legacy index-level split. Leaks cats across the split -- kept only to
+        # reproduce checkpoints trained before the subject-disjoint split existed.
+        val_size = max(1, int(n * val_split))
+        indices = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
+        train_indices, val_indices = indices[: n - val_size], indices[n - val_size :]
+
+    train_set = Subset(train_dataset, train_indices)
+    val_set = Subset(val_dataset, val_indices)
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)

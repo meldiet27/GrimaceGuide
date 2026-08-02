@@ -53,12 +53,19 @@ together; everything else depends on abstractions, not concrete implementations.
   whiskers, head) before changing them again. Each `_score_*` function delegates its raw geometry
   to a paired `_*_geometry` helper (e.g. `_ear_geometry`) — `ml/calibrate_thresholds.py` imports
   those directly so any future recalibration runs against the exact production formula.
-- **Only the ears and head AUs are currently trustworthy from *predicted* landmarks.** Scored
-  against ground-truth-landmark results on held-out CatFLW images, ears/head reach Cohen's κ ≈
-  0.5–0.6 while eyes/whiskers/muzzle sit at κ ≈ 0 — the landmark model's ~5% -of-face-width error is
-  18–26% of the short distances those three AUs measure. This is a model-precision limit, not a
-  threshold problem, so don't try to fix it by moving cutoffs. See `docs/heatmap_decoding.md`;
-  re-measure with `ml/compare_predicted_geometry.py` after any checkpoint or decoding change.
+- **Eyes, muzzle and whiskers are not trustworthy from *predicted* landmarks** — they score Cohen's
+  κ ≈ 0 against ground-truth-landmark results, versus ≈ 0.5–0.6 for ears/head. The landmark model's
+  ~5%-of-face-width error is 18–26% of the short distances those three AUs measure. This is a
+  model-precision limit, not a threshold problem, and it survives reformulation and finer decoding —
+  don't try to fix it by moving cutoffs. `core/models.py::LOW_CONFIDENCE_ACTION_UNITS` marks them and
+  the UI de-emphasises them. The ears/head figures are an optimistic ceiling, not a validation (see
+  the split caveat below). Full derivation in `docs/heatmap_decoding.md`; re-measure with
+  `ml/compare_predicted_geometry.py` after any checkpoint or decoding change.
+- **Split CatFLW by cat, not by image.** Stems are `<subject>_<shot>` and the dataset is ~339 cats ×
+  ~6 photos, so an index-level split leaks: the old default put a same-cat photo in training for
+  310 of 311 val images. `ml/train.py::_subject_disjoint_split` (on by default) fixes this, but the
+  current `ml/checkpoints/*.pt` predate it and were trained leaky — so every held-out number
+  measured on them is optimistic, and an honest one needs a retrain.
 
 ## History
 

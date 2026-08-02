@@ -5,6 +5,7 @@ from grimaceguide.core.landmarks import (
     landmarks_to_labeled_dict,
 )
 from grimaceguide.core.models import (
+    ACTION_UNIT_NAMES,
     ActionUnitBreakdown,
     ActionUnitScore,
     GrimaceResult,
@@ -75,6 +76,46 @@ def test_labeled_dict_round_trip():
     assert len(round_tripped.points) == 48
     assert round_tripped.points[0].x == 0.0
     assert round_tripped.points[-1].x == 47.0
+
+
+def test_low_confidence_and_validated_units_partition_all_aus():
+    """Every AU is classified exactly once, so the UI can't silently omit one."""
+    b = ActionUnitBreakdown(
+        ears=ActionUnitScore.ABSENT,
+        eyes=ActionUnitScore.ABSENT,
+        muzzle=ActionUnitScore.ABSENT,
+        whiskers=ActionUnitScore.ABSENT,
+        head=ActionUnitScore.ABSENT,
+    )
+    assert set(b.validated_units) | set(b.low_confidence_units) == set(ACTION_UNIT_NAMES)
+    assert not set(b.validated_units) & set(b.low_confidence_units)
+    assert set(b.as_dict()) == set(ACTION_UNIT_NAMES)
+
+
+def test_low_confidence_units_are_the_measured_unreliable_ones():
+    """Pinned to docs/heatmap_decoding.md: only ears and head reached usable kappa."""
+    b = ActionUnitBreakdown(
+        ears=ActionUnitScore.OBVIOUS,
+        eyes=ActionUnitScore.OBVIOUS,
+        muzzle=ActionUnitScore.OBVIOUS,
+        whiskers=ActionUnitScore.OBVIOUS,
+        head=ActionUnitScore.OBVIOUS,
+    )
+    assert b.validated_units == ("ears", "head")
+    assert b.low_confidence_units == ("eyes", "muzzle", "whiskers")
+
+
+def test_total_still_includes_low_confidence_units():
+    """FGS is clinically defined over all five AUs -- confidence marking must not change it."""
+    b = ActionUnitBreakdown(
+        ears=ActionUnitScore.ABSENT,
+        eyes=ActionUnitScore.OBVIOUS,
+        muzzle=ActionUnitScore.OBVIOUS,
+        whiskers=ActionUnitScore.ABSENT,
+        head=ActionUnitScore.ABSENT,
+    )
+    assert b.total == 4
+    assert GrimaceResult.from_breakdown(b).pain_likely is True
 
 
 def _ears_landmarks(re_tip_x):
