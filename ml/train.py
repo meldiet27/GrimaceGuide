@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
 from tqdm import tqdm
 
-from ml.dataset import NUM_LANDMARKS, CatFLWDataset, subject_of
+from ml.dataset import NUM_LANDMARKS, CatFLWDataset, subject_disjoint_split
 from ml.model import LandmarkNet, decode_heatmaps
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -42,34 +42,6 @@ def make_weighted_heatmap_loss(device):
     return loss_fn
 
 
-def _subject_disjoint_split(samples, val_split, seed):
-    """Splits whole cats into train/val, never the same cat's photos across both.
-
-    CatFLW is ~339 cats with a median of 6 photos each, so an index-level random
-    split leaks: measured on the default 0.15/seed-42 split, 310 of 311 val images
-    had another photo of the same cat in training. That makes val a memorization
-    check rather than a generalization one and inflates every held-out metric.
-    Whole subjects are assigned to val until the image-count target is reached.
-    """
-    by_subject: dict[str, list[int]] = {}
-    for index, stem in enumerate(samples):
-        by_subject.setdefault(subject_of(stem), []).append(index)
-
-    subjects = sorted(by_subject)
-    order = torch.randperm(len(subjects), generator=torch.Generator().manual_seed(seed)).tolist()
-
-    target = max(1, int(len(samples) * val_split))
-    val_indices: list[int] = []
-    for position in order:
-        if len(val_indices) >= target:
-            break
-        val_indices.extend(by_subject[subjects[position]])
-
-    val_lookup = set(val_indices)
-    train_indices = [i for i in range(len(samples)) if i not in val_lookup]
-    return train_indices, sorted(val_indices)
-
-
 def build_dataloaders(
     data_dir, image_size, batch_size, val_split, seed, num_workers, group_by_subject=True
 ):
@@ -83,7 +55,7 @@ def build_dataloaders(
 
     n = len(train_dataset)
     if group_by_subject:
-        train_indices, val_indices = _subject_disjoint_split(
+        train_indices, val_indices = subject_disjoint_split(
             train_dataset.samples, val_split, seed
         )
     else:
@@ -146,13 +118,24 @@ def main():
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--legacy-split",
+        action="store_true",
+        help="use the old index-level split (leaks cats across train/val -- only for "
+             "reproducing pre-fix checkpoints)",
+    )
     args = parser.parse_args()
 
     device = torch.device(args.device)
     train_loader, val_loader = build_dataloaders(
-        args.data_dir, args.image_size, args.batch_size, args.val_split, args.seed, args.num_workers
+        args.data_dir, args.image_size, args.batch_size, args.val_split, args.seed,
+        args.num_workers, group_by_subject=not args.legacy_split,
     )
-    print(f"train samples={len(train_loader.dataset)}  val samples={len(val_loader.dataset)}  device={device}")
+    split_kind = "index-level (LEAKY)" if args.legacy_split else "subject-disjoint"
+    print(
+        f"train samples={len(train_loader.dataset)}  val samples={len(val_loader.dataset)}  "
+        f"split={split_kind}  device={device}"
+    )
 
     model = LandmarkNet(pretrained=True).to(device)
     criterion = make_weighted_heatmap_loss(device)
@@ -173,7 +156,24 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(
-                {"model_state": model.state_dict(), "image_size": args.image_size}, output_path
+                {
+                    "model_state": model.state_dict(),
+                    "image_size": args.image_size,
+                    # Recorded so a checkpoint can always be evaluated on the split it
+                    # was actually trained under. Reconstructing this after the fact
+                    # (from unrecorded Colab arguments) was guesswork that produced
+                    # optimistic numbers -- see docs/heatmap_decoding.md.
+                    "split": {
+                        "val_split": args.val_split,
+                        "seed": args.seed,
+                        "group_by_subject": not args.legacy_split,
+                    },
+                    "epochs": args.epochs,
+                    "lr": args.lr,
+                    "best_val_loss": val_loss,
+                    "val_landmark_error": val_landmark_error,
+                },
+                output_path,
             )
             print(f"  saved new best checkpoint to {output_path}")
 

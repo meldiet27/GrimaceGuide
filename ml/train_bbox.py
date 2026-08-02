@@ -17,12 +17,15 @@ from tqdm import tqdm
 
 from ml.bbox_dataset import CatFLWBBoxDataset
 from ml.bbox_model import BBoxNet
+from ml.dataset import subject_disjoint_split
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
-def build_dataloaders(data_dir, image_size, batch_size, val_split, seed, num_workers):
+def build_dataloaders(
+    data_dir, image_size, batch_size, val_split, seed, num_workers, group_by_subject=True
+):
     normalize = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)]
     )
@@ -30,11 +33,17 @@ def build_dataloaders(data_dir, image_size, batch_size, val_split, seed, num_wor
     val_dataset = CatFLWBBoxDataset(data_dir, image_size=image_size, transform=normalize, augment=False)
 
     n = len(train_dataset)
-    val_size = max(1, int(n * val_split))
-    train_size = n - val_size
-    indices = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
-    train_set = Subset(train_dataset, indices[:train_size])
-    val_set = Subset(val_dataset, indices[train_size:])
+    if group_by_subject:
+        # Same cat-level leak the landmark trainer had -- see ml/dataset.py.
+        train_indices, val_indices = subject_disjoint_split(train_dataset.samples, val_split, seed)
+    else:
+        # Legacy index-level split, kept only to reproduce pre-fix checkpoints.
+        val_size = max(1, int(n * val_split))
+        indices = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
+        train_indices, val_indices = indices[: n - val_size], indices[n - val_size :]
+
+    train_set = Subset(train_dataset, train_indices)
+    val_set = Subset(val_dataset, val_indices)
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
@@ -96,13 +105,24 @@ def main():
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--legacy-split",
+        action="store_true",
+        help="use the old index-level split (leaks cats across train/val -- only for "
+             "reproducing pre-fix checkpoints)",
+    )
     args = parser.parse_args()
 
     device = torch.device(args.device)
     train_loader, val_loader = build_dataloaders(
-        args.data_dir, args.image_size, args.batch_size, args.val_split, args.seed, args.num_workers
+        args.data_dir, args.image_size, args.batch_size, args.val_split, args.seed,
+        args.num_workers, group_by_subject=not args.legacy_split,
     )
-    print(f"train samples={len(train_loader.dataset)}  val samples={len(val_loader.dataset)}  device={device}")
+    split_kind = "index-level (LEAKY)" if args.legacy_split else "subject-disjoint"
+    print(
+        f"train samples={len(train_loader.dataset)}  val samples={len(val_loader.dataset)}  "
+        f"split={split_kind}  device={device}"
+    )
 
     model = BBoxNet(pretrained=True).to(device)
     criterion = torch.nn.SmoothL1Loss()
@@ -123,7 +143,22 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(
-                {"model_state": model.state_dict(), "image_size": args.image_size}, output_path
+                {
+                    "model_state": model.state_dict(),
+                    "image_size": args.image_size,
+                    # See the matching comment in ml/train.py -- a checkpoint should
+                    # always carry the split it was trained under.
+                    "split": {
+                        "val_split": args.val_split,
+                        "seed": args.seed,
+                        "group_by_subject": not args.legacy_split,
+                    },
+                    "epochs": args.epochs,
+                    "lr": args.lr,
+                    "best_val_loss": val_loss,
+                    "val_iou": val_iou,
+                },
+                output_path,
             )
             print(f"  saved new best checkpoint to {output_path}")
 

@@ -12,8 +12,8 @@ import pytest
 
 pytest.importorskip("torch")
 
+from ml.dataset import subject_disjoint_split as _subject_disjoint_split  # noqa: E402
 from ml.dataset import subject_of  # noqa: E402
-from ml.train import _subject_disjoint_split  # noqa: E402
 
 
 def _stems(subjects=40, shots=6):

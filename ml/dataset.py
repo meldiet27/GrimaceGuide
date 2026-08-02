@@ -35,6 +35,39 @@ def subject_of(stem: str) -> str:
     return re.sub(r"_\d+$", "", stem)
 
 
+def subject_disjoint_split(samples, val_split: float, seed: int):
+    """Splits whole cats into train/val, never the same cat's photos across both.
+
+    CatFLW is ~339 cats with a median of 6 photos each, so an index-level random
+    split leaks: measured on the default 0.15/seed-42 split, 310 of 311 val images
+    had another photo of the same cat in training. That makes val a memorization
+    check rather than a generalization one and inflates every held-out metric.
+    Whole subjects are assigned to val until the image-count target is reached.
+
+    Shared by ml/train.py and ml/train_bbox.py so the two models are never trained
+    against differently-leaking splits.
+    """
+    import torch  # local: keeps this module importable without torch for stem-only use
+
+    by_subject: dict[str, list[int]] = {}
+    for index, stem in enumerate(samples):
+        by_subject.setdefault(subject_of(stem), []).append(index)
+
+    subjects = sorted(by_subject)
+    order = torch.randperm(len(subjects), generator=torch.Generator().manual_seed(seed)).tolist()
+
+    target = max(1, int(len(samples) * val_split))
+    val_indices: list[int] = []
+    for position in order:
+        if len(val_indices) >= target:
+            break
+        val_indices.extend(by_subject[subjects[position]])
+
+    val_lookup = set(val_indices)
+    train_indices = [i for i in range(len(samples)) if i not in val_lookup]
+    return train_indices, sorted(val_indices)
+
+
 def _render_heatmaps(points: np.ndarray, image_size: int) -> np.ndarray:
     """Renders one Gaussian heatmap per landmark at image_size // HEATMAP_STRIDE resolution."""
     size = image_size // HEATMAP_STRIDE
