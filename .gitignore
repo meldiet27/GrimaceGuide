@@ -48,6 +48,10 @@ ml/data/
 ml/checkpoints/
 ml/predictions/
 
+# Third-party clinical reference charts kept locally for convenience. Not ours to
+# redistribute from a public repo -- cite them in README.md instead of vendoring.
+docs/*.pdf
+
 # Ad-hoc local test images
 imagesGUI/some_cat_image.jpg
 
