@@ -30,20 +30,47 @@ def build_service(
     api_url: str | None = None,
     db_path: str | Path | None = None,
     processed_dir: str | Path | None = None,
+    landmark_source: str | None = None,
+    local_checkpoint_path: str | Path | None = None,
 ) -> AnalysisService:
-    """Wire together an AnalysisService with sensible defaults."""
-    resolved_url = api_url or os.getenv("GG_API_URL", _DEFAULT_API_URL)
-    if not resolved_url:
+    """Wire together an AnalysisService with sensible defaults.
+
+    landmark_source selects between the remote API (default) and the local
+    ml/-trained model ("local", requires torch -- see
+    grimaceguide/infrastructure/local_landmark_model.py). Override via
+    GG_LANDMARK_SOURCE / GG_LOCAL_CHECKPOINT env vars.
+    """
+    resolved_source = (landmark_source or os.getenv("GG_LANDMARK_SOURCE", "remote")).lower()
+
+    if resolved_source == "local":
+        from grimaceguide.infrastructure.local_landmark_model import LocalLandmarkModel
+
+        resolved_checkpoint = local_checkpoint_path or os.getenv("GG_LOCAL_CHECKPOINT")
+        if not resolved_checkpoint:
+            raise RuntimeError(
+                "GG_LANDMARK_SOURCE=local requires GG_LOCAL_CHECKPOINT or "
+                "local_checkpoint_path= pointing at a trained ml/ checkpoint."
+            )
+        api_client = LocalLandmarkModel(checkpoint_path=resolved_checkpoint)
+    elif resolved_source == "remote":
+        resolved_url = api_url or os.getenv("GG_API_URL", _DEFAULT_API_URL)
+        if not resolved_url:
+            raise RuntimeError(
+                "No API URL configured. Set GG_API_URL or pass api_url= explicitly."
+            )
+        api_client = LandmarkAPIClient(url=resolved_url)
+    else:
         raise RuntimeError(
-            "No API URL configured. Set GG_API_URL or pass api_url= explicitly."
+            f"Unknown GG_LANDMARK_SOURCE: {resolved_source!r} (expected 'remote' or 'local')."
         )
+
     resolved_db = Path(db_path or os.getenv("GG_ANALYSES_DB", str(DEFAULT_ANALYSES_DB)))
     resolved_processed_dir = Path(
         processed_dir or os.getenv("GG_PROCESSED_DIR", str(DEFAULT_PROCESSED_DIR))
     )
 
     return AnalysisService(
-        api_client=LandmarkAPIClient(url=resolved_url),
+        api_client=api_client,
         repository=SQLiteResultRepository(db_path=resolved_db),
         image_storage=LocalBlobStorage(root=resolved_processed_dir),
     )

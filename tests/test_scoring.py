@@ -105,15 +105,18 @@ def test_score_ears_missing_landmarks_defaults_absent():
 
 
 def _eyes_landmarks(v_dist):
+    # eye_1/eye_2 = outer/inner corner (h_dist=20); eye_3/eye_4 = top/bottom
+    # (same x, so distance between them is exactly v_dist) -- a diamond, not
+    # two same-y pairs, matching _score_eyes' outer/inner/top/bottom geometry.
     return {
         "left_eye_1": Landmark(0, 0),
         "left_eye_2": Landmark(20, 0),
-        "left_eye_3": Landmark(0, v_dist),
-        "left_eye_4": Landmark(20, v_dist),
+        "left_eye_3": Landmark(10, -v_dist / 2),
+        "left_eye_4": Landmark(10, v_dist / 2),
         "right_eye_1": Landmark(0, 0),
         "right_eye_2": Landmark(20, 0),
-        "right_eye_3": Landmark(0, v_dist),
-        "right_eye_4": Landmark(20, v_dist),
+        "right_eye_3": Landmark(10, -v_dist / 2),
+        "right_eye_4": Landmark(10, v_dist / 2),
     }
 
 

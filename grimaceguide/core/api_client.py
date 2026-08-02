@@ -7,7 +7,7 @@ from __future__ import annotations
 import base64
 import json
 import os
-from typing import Optional
+from typing import Optional, Protocol
 
 import numpy as np
 import requests
@@ -16,6 +16,12 @@ from grimaceguide.core.exceptions import LandmarkAPIError
 from grimaceguide.core.image_processing import encode_jpeg
 from grimaceguide.core.landmarks import landmarks_from_points
 from grimaceguide.core.models import LandmarkSet
+
+
+class LandmarkDetector(Protocol):
+    """Anything that can turn an image into a LandmarkSet -- remote API or local model."""
+
+    def detect_landmarks(self, image: np.ndarray, name: str = "image.jpg") -> LandmarkSet: ...
 
 
 class LandmarkAPIClient:

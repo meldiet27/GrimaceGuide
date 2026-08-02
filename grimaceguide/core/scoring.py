@@ -80,29 +80,37 @@ def _score_ears(labeled: dict[str, Landmark]) -> ActionUnitScore:
 
 
 def _score_eyes(labeled: dict[str, Landmark]) -> ActionUnitScore:
-    """0 = open, 1 = partially open, 2 = squinted."""
-    le1, le2, le3, le4 = (labeled.get(f"left_eye_{i + 1}") for i in range(4))
-    re1, re2, re3, re4 = (labeled.get(f"right_eye_{i + 1}") for i in range(4))
+    """0 = open, 1 = partially open, 2 = squinted.
 
-    if not all([le1, le2, le3, le4, re1, re2, re3, re4]):
+    eye_1..4 are a 4-point diamond: outer corner, inner corner, top, bottom (not
+    two top points + two bottom points -- CatFLW-derived landmarks only supply
+    one of each, so this reads the diamond directly: h_dist is the true eye
+    width (outer-to-inner corner) and v_dist is the actual eyelid opening
+    (top-to-bottom), rather than averaging corners into a fake top/bottom
+    midpoint the way the original ported prototype logic did.
+    """
+    l_outer, l_inner, l_top, l_bottom = (labeled.get(f"left_eye_{i + 1}") for i in range(4))
+    r_outer, r_inner, r_top, r_bottom = (labeled.get(f"right_eye_{i + 1}") for i in range(4))
+
+    if not all([l_outer, l_inner, l_top, l_bottom, r_outer, r_inner, r_top, r_bottom]):
         return ActionUnitScore.ABSENT
 
-    left_top_mid_y = (le1.y + le2.y) / 2
-    left_bot_mid_y = (le3.y + le4.y) / 2
-    left_v_dist = abs(left_bot_mid_y - left_top_mid_y)
-    left_h_dist = _distance(le1, le2)
+    left_h_dist = _distance(l_outer, l_inner)
+    left_v_dist = _distance(l_top, l_bottom)
+    right_h_dist = _distance(r_outer, r_inner)
+    right_v_dist = _distance(r_top, r_bottom)
 
-    right_top_mid_y = (re1.y + re2.y) / 2
-    right_bot_mid_y = (re3.y + re4.y) / 2
-    right_v_dist = abs(right_bot_mid_y - right_top_mid_y)
-    right_h_dist = _distance(re1, re2)
-
+    if left_v_dist is None or right_v_dist is None:
+        return ActionUnitScore.ABSENT
     avg_v_dist = (left_v_dist + right_v_dist) / 2
     avg_h_dist = (left_h_dist + right_h_dist) / 2 if left_h_dist and right_h_dist else None
 
     if not avg_h_dist or avg_h_dist <= 0:
         return ActionUnitScore.ABSENT
 
+    # NOTE: thresholds below are carried over from the top-pair/bottom-pair
+    # formula and have not been revalidated against this corner-based h_dist,
+    # which measures a different (larger) baseline than before.
     eye_aspect_ratio = avg_v_dist / avg_h_dist
     if eye_aspect_ratio < 0.25:
         return ActionUnitScore.OBVIOUS

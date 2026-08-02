@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from grimaceguide.core.api_client import LandmarkAPIClient
+from grimaceguide.core.api_client import LandmarkDetector
 from grimaceguide.core.image_processing import ImageInput, draw_landmarks_overlay, encode_png, load_image
 from grimaceguide.core.landmarks import landmarks_to_labeled_dict
 from grimaceguide.core.models import AnalysisOutcome
@@ -20,7 +20,7 @@ class AnalysisService:
 
     def __init__(
         self,
-        api_client: LandmarkAPIClient,
+        api_client: LandmarkDetector,
         repository: SQLiteResultRepository,
         image_storage: Optional[BlobStorage] = None,
     ):
