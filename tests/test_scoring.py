@@ -93,11 +93,11 @@ def test_score_ears_absent():
 
 
 def test_score_ears_moderate():
-    assert _score_ears(_ears_landmarks(re_tip_x=26)) == ActionUnitScore.MODERATE  # ratio 1.3
+    assert _score_ears(_ears_landmarks(re_tip_x=36)) == ActionUnitScore.MODERATE  # ratio 1.8
 
 
 def test_score_ears_obvious():
-    assert _score_ears(_ears_landmarks(re_tip_x=32)) == ActionUnitScore.OBVIOUS  # ratio 1.6
+    assert _score_ears(_ears_landmarks(re_tip_x=40)) == ActionUnitScore.OBVIOUS  # ratio 2.0
 
 
 def test_score_ears_missing_landmarks_defaults_absent():
@@ -169,19 +169,22 @@ def _head_landmarks(chin_y):
 
 
 def test_score_head_absent():
-    assert _score_head(_head_landmarks(chin_y=-10)) == ActionUnitScore.ABSENT
+    # normalized_diff = chin_y / face_width = 5 / 10 = 0.5 (<= 0.86)
+    assert _score_head(_head_landmarks(chin_y=5), face_width=10) == ActionUnitScore.ABSENT
 
 
 def test_score_head_moderate():
-    assert _score_head(_head_landmarks(chin_y=0)) == ActionUnitScore.MODERATE
+    # normalized_diff = 10 / 10 = 1.0 (between 0.86 and 1.32)
+    assert _score_head(_head_landmarks(chin_y=10), face_width=10) == ActionUnitScore.MODERATE
 
 
 def test_score_head_obvious():
-    assert _score_head(_head_landmarks(chin_y=10)) == ActionUnitScore.OBVIOUS
+    # normalized_diff = 15 / 10 = 1.5 (> 1.32)
+    assert _score_head(_head_landmarks(chin_y=15), face_width=10) == ActionUnitScore.OBVIOUS
 
 
 def test_score_head_missing_landmarks_defaults_absent():
-    assert _score_head({}) == ActionUnitScore.ABSENT
+    assert _score_head({}, face_width=None) == ActionUnitScore.ABSENT
 
 
 def test_score_whiskers_straight_and_forward_is_obvious():

@@ -51,14 +51,14 @@ def _estimate_face_width(labeled: dict[str, Landmark]) -> Optional[float]:
     return _distance(labeled.get("left_eye_1"), labeled.get("right_eye_1"))
 
 
-def _score_ears(labeled: dict[str, Landmark]) -> ActionUnitScore:
-    """0 = forward, 1 = slightly apart, 2 = flattened/rotated outwards."""
+def _ear_geometry(labeled: dict[str, Landmark]) -> Optional[tuple[float, float]]:
+    """Returns (avg_ear_angle_degrees, tip_base_ratio), or None if landmarks are missing."""
     le_base, le_tip, le_outer = labeled.get("left_ear_1"), labeled.get("left_ear_3"), labeled.get("left_ear_5")
     re_base, re_tip, re_outer = labeled.get("right_ear_1"), labeled.get("right_ear_3"), labeled.get("right_ear_5")
 
     # le_outer/re_outer are presence-gate only, not used in the math below (parity with legacy).
     if not (le_base and le_tip and le_outer and re_base and re_tip and re_outer):
-        return ActionUnitScore.ABSENT
+        return None
 
     left_ear_angle = _vertical_angle(le_base, le_tip)
     right_ear_angle = _vertical_angle(re_base, re_tip)
@@ -71,10 +71,25 @@ def _score_ears(labeled: dict[str, Landmark]) -> ActionUnitScore:
     tip_base_ratio = tip_dist / base_dist if base_dist and base_dist > 0 else None
 
     if avg_ear_angle is None or tip_base_ratio is None:
+        return None
+    return avg_ear_angle, tip_base_ratio
+
+
+def _score_ears(labeled: dict[str, Landmark]) -> ActionUnitScore:
+    """0 = forward, 1 = slightly apart, 2 = flattened/rotated outwards."""
+    geometry = _ear_geometry(labeled)
+    if geometry is None:
         return ActionUnitScore.ABSENT
-    if avg_ear_angle > 45 or tip_base_ratio > 1.5:
+    avg_ear_angle, tip_base_ratio = geometry
+
+    # Thresholds are empirically calibrated against real CatFLW data (see
+    # docs/au_threshold_calibration.md) -- the original 45/1.5 and 25/1.2
+    # cutoffs were so loose that 50.8%/98.9% of a general (non-pain) photo
+    # population respectively hit OBVIOUS/MODERATE-or-above, making the AU
+    # nearly non-discriminating. Raised so OBVIOUS/MODERATE-or-above are ~6%/~15%.
+    if avg_ear_angle > 55 or tip_base_ratio > 1.9:
         return ActionUnitScore.OBVIOUS
-    if avg_ear_angle > 25 or tip_base_ratio > 1.2:
+    if avg_ear_angle > 50 or tip_base_ratio > 1.7:
         return ActionUnitScore.MODERATE
     return ActionUnitScore.ABSENT
 
@@ -126,14 +141,14 @@ def _score_eyes(labeled: dict[str, Landmark]) -> ActionUnitScore:
     return ActionUnitScore.ABSENT
 
 
-def _score_muzzle(labeled: dict[str, Landmark]) -> ActionUnitScore:
-    """0 = relaxed round shape, 1 = mildly tense, 2 = tense elliptical shape."""
+def _muzzle_geometry(labeled: dict[str, Landmark]) -> Optional[float]:
+    """Returns muzzle_ratio (mouth width / nose-to-mouth distance), or None if missing."""
     nose_tip = labeled.get("nose_3")
     mouth_left = labeled.get("mouth_1")
     mouth_right = labeled.get("mouth_4")
 
     if not (nose_tip and mouth_left and mouth_right):
-        return ActionUnitScore.ABSENT
+        return None
 
     mouth_width = _distance(mouth_left, mouth_right)
     mouth_center = Landmark(
@@ -143,9 +158,18 @@ def _score_muzzle(labeled: dict[str, Landmark]) -> ActionUnitScore:
     nose_to_mouth_dist = _distance(nose_tip, mouth_center)
 
     if not (mouth_width and nose_to_mouth_dist and nose_to_mouth_dist > 0):
+        return None
+    return mouth_width / nose_to_mouth_dist
+
+
+def _score_muzzle(labeled: dict[str, Landmark]) -> ActionUnitScore:
+    """0 = relaxed round shape, 1 = mildly tense, 2 = tense elliptical shape."""
+    muzzle_ratio = _muzzle_geometry(labeled)
+    if muzzle_ratio is None:
         return ActionUnitScore.ABSENT
 
-    muzzle_ratio = mouth_width / nose_to_mouth_dist
+    # Thresholds are empirically calibrated against real CatFLW data, not from
+    # FGS literature (see docs/au_threshold_calibration.md).
     if muzzle_ratio > 1.5:
         return ActionUnitScore.OBVIOUS
     if muzzle_ratio > 1.1:
@@ -153,15 +177,17 @@ def _score_muzzle(labeled: dict[str, Landmark]) -> ActionUnitScore:
     return ActionUnitScore.ABSENT
 
 
-def _score_whiskers(labeled: dict[str, Landmark], face_width: Optional[float]) -> ActionUnitScore:
-    """0 = loose/curved, 1 = slightly curved/straight, 2 = straight/forward-pointing."""
+def _whisker_geometry(
+    labeled: dict[str, Landmark], face_width: Optional[float]
+) -> Optional[tuple[Optional[float], bool, bool]]:
+    """Returns (normalized_spread, is_straight, is_forward), or None if landmarks are missing."""
     lw1, lw3, lw5 = labeled.get("left_whisker_1"), labeled.get("left_whisker_3"), labeled.get("left_whisker_5")
     rw1, rw3, rw5 = labeled.get("right_whisker_1"), labeled.get("right_whisker_3"), labeled.get("right_whisker_5")
     # nose_base_l/nose_base_r are presence-gate only, not used in the math below (parity with legacy).
     nose_base_l, nose_base_r = labeled.get("nose_1"), labeled.get("nose_5")
 
     if not all([lw1, lw3, lw5, rw1, rw3, rw5, nose_base_l, nose_base_r]):
-        return ActionUnitScore.ABSENT
+        return None
 
     left_spread = abs(lw5.x - lw1.x)
     right_spread = abs(rw5.x - rw1.x)
@@ -177,35 +203,65 @@ def _score_whiskers(labeled: dict[str, Landmark], face_width: Optional[float]) -
 
     is_straight = not (left_curve_proxy or right_curve_proxy)
     is_forward = left_forward and right_forward
+    return normalized_spread, is_straight, is_forward
 
+
+def _score_whiskers(labeled: dict[str, Landmark], face_width: Optional[float]) -> ActionUnitScore:
+    """0 = loose/curved, 1 = slightly curved/straight, 2 = straight/forward-pointing."""
+    geometry = _whisker_geometry(labeled, face_width)
+    if geometry is None:
+        return ActionUnitScore.ABSENT
+    normalized_spread, is_straight, is_forward = geometry
+
+    # The normalized_spread cutoff is empirically calibrated against real CatFLW
+    # data (see docs/au_threshold_calibration.md): the original 0.8 cutoff was
+    # unreachable (max observed value across 2079 photos was 0.40), meaning this
+    # branch could never actually resolve to ABSENT. Lowered to 0.24 (~80th
+    # percentile within this branch), so the loosest-spread ~20% now do.
     if is_straight and is_forward:
         return ActionUnitScore.OBVIOUS
     if not is_straight and not is_forward:
-        if normalized_spread and normalized_spread > 0.8:
+        if normalized_spread and normalized_spread > 0.24:
             return ActionUnitScore.ABSENT
         return ActionUnitScore.MODERATE
     return ActionUnitScore.MODERATE
 
 
-def _score_head(labeled: dict[str, Landmark]) -> ActionUnitScore:
-    """0 = above shoulder line, 1 = aligned, 2 = below shoulder line/tilted down."""
+def _head_geometry(labeled: dict[str, Landmark], face_width: Optional[float]) -> Optional[float]:
+    """Returns normalized_diff (chin-to-ear-base vertical offset / face_width), or None if missing.
+
+    Previously normalized the offset by its own absolute value (head_height_proxy =
+    abs(diff)), which makes diff / head_height_proxy always exactly +-1 -- a sign
+    function wearing a ratio's clothes, carrying zero magnitude information (confirmed
+    empirically: min/p1 were already -1, p5 through max were already +1 across all 2079
+    CatFLW photos). Normalizing by face_width instead (same pattern _score_whiskers
+    already uses) gives a real continuous signal -- see docs/au_threshold_calibration.md.
+    """
     chin_point = labeled.get("chin_point")
     left_ear_base = labeled.get("left_ear_1")
     right_ear_base = labeled.get("right_ear_1")
 
     if not (chin_point and left_ear_base and right_ear_base):
-        return ActionUnitScore.ABSENT
+        return None
+    if not face_width or face_width <= 0:
+        return None
 
     avg_ear_base_y = (left_ear_base.y + right_ear_base.y) / 2
-    chin_y = chin_point.y
+    diff = chin_point.y - avg_ear_base_y
+    return diff / face_width
 
-    head_height_proxy = abs(chin_y - avg_ear_base_y)
-    diff = chin_y - avg_ear_base_y
-    normalized_diff = diff / head_height_proxy if head_height_proxy and head_height_proxy > 0 else 0
 
-    if normalized_diff > 0.1:
+def _score_head(labeled: dict[str, Landmark], face_width: Optional[float]) -> ActionUnitScore:
+    """0 = above shoulder line, 1 = aligned, 2 = below shoulder line/tilted down."""
+    normalized_diff = _head_geometry(labeled, face_width)
+    if normalized_diff is None:
+        return ActionUnitScore.ABSENT
+
+    # Thresholds are empirically calibrated against real CatFLW data, not from
+    # FGS literature (see docs/au_threshold_calibration.md).
+    if normalized_diff > 1.32:
         return ActionUnitScore.OBVIOUS
-    if normalized_diff > -0.1:
+    if normalized_diff > 0.86:
         return ActionUnitScore.MODERATE
     return ActionUnitScore.ABSENT
 
@@ -227,7 +283,7 @@ def compute_grimace_score(
         eyes=_score_eyes(labeled),
         muzzle=_score_muzzle(labeled),
         whiskers=_score_whiskers(labeled, face_width),
-        head=_score_head(labeled),
+        head=_score_head(labeled, face_width),
     )
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
