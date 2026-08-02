@@ -40,6 +40,22 @@ across aligned crops. Heatmaps avoid this since each landmark gets its own spati
   (containing `images/` and `labels/`), or point `--data-dir` anywhere else.
 - `checkpoints/` — gitignored. Trained weights land here by default.
 
+  Two generations live side by side. **`*_subjsplit.pt` are the ones to use** — trained under
+  `dataset.py::subject_disjoint_split` and wired as the defaults in `grimaceguide/container.py`.
+  The plain `landmark_net.pt` / `bbox_net.pt` are older checkpoints trained with an index-level
+  split that leaked cats across train/val (310 of 311 val images had a same-cat photo in
+  training), so their held-out metrics were measured on cats they had already seen. They are
+  equivalent in accuracy — the leak inflated the *metrics*, not the model — but nothing measured
+  on them can be trusted. Kept only for comparison; see `docs/heatmap_decoding.md`.
+
+  Checkpoints written since that fix embed their own `split` config, which
+  `compare_predicted_geometry.py` reads back so evaluation can't silently score training images.
+  A quick way to tell them apart:
+
+  ```bash
+  python -c "import torch; print(torch.load('ml/checkpoints/landmark_net_subjsplit.pt', map_location='cpu')['split'])"
+  ```
+
 ## Running locally
 
 ```bash
